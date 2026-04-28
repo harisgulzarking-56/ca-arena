@@ -86,7 +86,7 @@ function statHealth(key,v){
 }
 const HC={good:T.green,warn:T.gold,bad:T.red,neutral:T.blue};
 
-const FM_NODES = {
+const Nodes = {
 
   /* ══ MONTH 1 ══════════════════════════════════════════════════ */
   start:{
@@ -230,7 +230,7 @@ const FM_NODES = {
     narrative:`You cut staff hours and electricity. Saved PKR 120K/month. But the dimmer, quieter store feels unwelcoming — sales fell to PKR 230,000. Net burn still PKR 270K/month. You extended the runway by a few weeks but addressed neither root cause.`,
     situation:`Cost cutting cannot fix a revenue problem. You've burned another month. Fundamental intervention or closure — those are the only two paths left.`,
     choices:[
-      {id:"a",label:"Full Pareto restructure — liquidate everything and rebuild",desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},next:"end_recovered_late"},
+      {id:"a",label:"BlahBlahe — liquidate everything and rebuild",desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},next:"end_recovered_late"},
       {id:"b",                                        // ← ADD THIS
        label:"Continue cutting costs — wait for peak season",
        desc:"There's a wedding season coming. If sales spike naturally, the business survives.",
@@ -662,8 +662,22 @@ function FreshMartSim({onBack,onComplete}){
   const [log,setLog]=useState([]);
   const topRef=useRef(null);
 
-  const node=FM_NODES[nodeId];
+  const node=Nodes[nodeId];
   const isEnding=node?.isEnding;
+  console.log("NODE ID:", nodeId);
+  console.log("NODE OBJECT:", Nodes[nodeId]);
+  console.log("CHOICES:", Nodes[nodeId]?.choices);
+  
+  useEffect(() => {
+   if (phase === "consequence" && chosen) {
+     const timer = setTimeout(() => {
+      setNodeId(chosen.next);
+      setPhase("decision");
+    }, 800);
+
+    return () => clearTimeout(timer);
+    }
+  }, [phase, chosen]);
 
   function applyImpact(base,imp){
     const n={...base};
@@ -707,7 +721,7 @@ function FreshMartSim({onBack,onComplete}){
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      <TopBar label="FRESHMART SIMULATION" sub="BRANCHING CASE" onBack={onBack} right={
+      <TopBar label="FRESHMART " sub="BRANCHING CASE" onBack={onBack} right={
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <Tag color={DC.SEED}>SEED</Tag>
           <button onClick={()=>{setNodeId("start");setStats({...FM_INITIAL});setPrevStats(null);setPhase("decision");setChosen(null);setHov(null);setLog([]);}} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
@@ -805,6 +819,11 @@ function FreshMartSim({onBack,onComplete}){
             <div style={{animation:"fadeUp .3s both"}}>
               <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:10}}>▸ YOUR MOVE</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {(() => {
+                 console.log("CHOICES LENGTH:", node?.choices?.length);
+                 console.log("CHOICES:", node?.choices);
+                 return null;
+                })()}
                 {node.choices?.map(c=>(
                   <div key={c.id} onMouseEnter={()=>setHov(c)} onMouseLeave={()=>setHov(null)} onClick={()=>handleSelect(c)} style={{border:`2px solid ${hov?.id===c.id?T.gold:T.border}`,background:hov?.id===c.id?T.goldD:T.surf,padding:"14px 16px",cursor:"pointer",transition:"all .15s",display:"flex",gap:12,alignItems:"flex-start"}}>
                     <div style={{width:20,height:20,border:`2px solid ${hov?.id===c.id?T.gold:T.mid}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"border-color .15s"}}>
