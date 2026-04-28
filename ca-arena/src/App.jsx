@@ -233,7 +233,7 @@ const Nodes = {
     choices:[
       {
         id:"a",
-        label:"Full Pareto restructure technicality — liquidate everything and rebuild",
+        label:"Full Pareto restructure  — liquidate everything and rebuild from scratch",
         desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",
         impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},
         next:"end_recovered_late",
