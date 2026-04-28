@@ -226,16 +226,24 @@ const Nodes = {
     ],
   },
   cost_cut:{
-    id:"cost_cut", month:3, title:"Cutting Costs Without Fixing Revenue — Slow Death", isWarning:true,
+    id:"cost_cut", month:3, title:"Cutting Costs Without Fixing Revenue — Slow Death",
+    isWarning:true,
     narrative:`You cut staff hours and electricity. Saved PKR 120K/month. But the dimmer, quieter store feels unwelcoming — sales fell to PKR 230,000. Net burn still PKR 270K/month. You extended the runway by a few weeks but addressed neither root cause.`,
     situation:`Cost cutting cannot fix a revenue problem. You've burned another month. Fundamental intervention or closure — those are the only two paths left.`,
     choices:[
-      {id:"a",label:"BlahBlahe — liquidate everything and rebuild",desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},next:"end_recovered_late"},
-      {id:"b",                                        // ← ADD THIS
-       label:"Continue cutting costs — wait for peak season",
-       desc:"There's a wedding season coming. If sales spike naturally, the business survives.",
-       impact:{cash:-800000,monthlySales:-30000,customerCount:-20,staffMorale:-25,ownerStress:+30},
-       next:"end_closure",                            // ← new bad ending
+      {
+        id:"a",
+        label:"Full Pareto restructure — liquidate everything and rebuild",
+        desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",
+        impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},
+        next:"end_recovered_late",
+      },
+      {
+        id:"b",
+        label:"Keep cutting costs — wait for peak season to save the business",
+        desc:"There's a wedding season coming. If sales spike naturally the business survives without a painful restructure.",
+        impact:{cash:-800000,monthlySales:-30000,customerCount:-20,staffMorale:-25,ownerStress:+30},
+        next:"end_closure",
       },
     ],
   },
