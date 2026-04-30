@@ -12,7 +12,19 @@ const UserCtx = createContext(null);
 function useUser(){ return useContext(UserCtx); }
 
 const XP_REWARD = { SEED:80, GROWTH:150, APEX:250 };
+const XP_PER_LEVEL = 300; // Merit rule: every 300 XP = +1 level
 function xpToRank(xp){ return xp>=10000?"APEX":xp>=5000?"GROWTH":"SEED"; }
+function xpToLevel(xp){ return Math.max(1, Math.floor((Number(xp)||0)/XP_PER_LEVEL)+1); }
+function xpToRankMeta(xp){
+  const safeXp = Number(xp)||0;
+  const tier = xpToRank(safeXp);
+  const level = xpToLevel(safeXp);
+  return { tier, level, label:`${tier} · Lv ${level}` };
+}
+const DIFF_UNLOCK_LEVEL = { SEED:1, GROWTH:6, APEX:14 };
+function canAccessDifficulty(xp, diff){
+  return xpToLevel(xp) >= (DIFF_UNLOCK_LEVEL[diff]||1);
+}
 
 
 
@@ -540,23 +552,32 @@ function HexBg(){
   return <svg style={{position:"absolute",inset:0,opacity:.05,pointerEvents:"none",width:"100%",height:"100%"}}><defs><pattern id="hx" x="0" y="0" width="60" height="52" patternUnits="userSpaceOnUse"><polygon points="30,2 58,17 58,47 30,62 2,47 2,17" fill="none" stroke="#F4C430" strokeWidth="0.8"/></pattern></defs><rect width="100%" height="100%" fill="url(#hx)"/></svg>;
 }
 function TickerBar({user}){
+  const rankMeta = user ? xpToRankMeta(user.xp) : null;
   const items=[
     "▸ CASES LIVE: 2,847",
     "▸ ACTIVE BOARDS: 34",
     user ? `▸ YOUR XP: ${user.xp.toLocaleString()}` : "▸ JOIN TO EARN XP",
-    user ? `▸ RANK: ${user.rank}` : "▸ SIGN UP FREE",
+    user ? `▸ RANK: ${rankMeta.label}` : "▸ SIGN UP FREE",
     "▸ NEW CASE: Engro APEX",
     "▸ BOARDROOM LIVE: Lucky Cement",
   ];
   return <div style={{background:T.gold,padding:"5px 0",overflow:"hidden",borderBottom:"2px solid #000",flexShrink:0}}><div style={{display:"flex",gap:60,animation:"ticker 22s linear infinite",whiteSpace:"nowrap",paddingLeft:"100%",fontFamily:T.mono,fontSize:10,fontWeight:700,color:"#111",letterSpacing:1}}>{[...items,...items].map((t,i)=><span key={i}>{t}</span>)}</div></div>;
 }
 
-function LeaderboardPanel({leaderboard,currentUserId}){
-  if(!leaderboard||!leaderboard.length){
+function LeaderboardPanel({leaderboard,currentUserId,loading}){
+  if(loading && (!leaderboard||!leaderboard.length)){
     return(
       <div style={{background:T.surf,border:`2px solid ${T.border}`,padding:"20px 18px"}}>
         <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:14}}>GLOBAL RANK</div>
         <div style={{fontFamily:T.mono,fontSize:10,color:T.dim,textAlign:"center",padding:"20px 0"}}>Loading…</div>
+      </div>
+    );
+  }
+  if(!leaderboard||!leaderboard.length){
+    return(
+      <div style={{background:T.surf,border:`2px solid ${T.border}`,padding:"20px 18px"}}>
+        <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:14}}>GLOBAL RANK</div>
+        <div style={{fontFamily:T.mono,fontSize:10,color:T.dim,textAlign:"center",padding:"20px 0"}}>No leaderboard data yet</div>
       </div>
     );
   }
@@ -568,12 +589,15 @@ function LeaderboardPanel({leaderboard,currentUserId}){
       </div>
       {leaderboard.map((p,i)=>{
         const isMe = p.id===currentUserId;
+        const rankMeta = xpToRankMeta(p.xp);
         return(
           <div key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:i<leaderboard.length-1?`1px solid ${T.muted}`:"none",background:isMe?`${T.gold}06`:"transparent"}}>
             <span style={{fontFamily:T.mono,fontSize:11,color:i<3?T.gold:T.muted,fontWeight:800,width:18,textAlign:"right",flexShrink:0}}>{i+1}</span>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontFamily:T.sans,fontSize:12,color:isMe?T.gold:"#ccc",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.username}{isMe?" ◀":""}</div>
-              <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1}}>{p.cases_completed} cases · <span style={{color:DC[p.rank]||T.dim}}>{p.rank}</span></div>
+              <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1}}>
+                #{i+1} · {p.cases_completed} cases · <span style={{color:DC[rankMeta.tier]||T.dim}}>{rankMeta.label}</span>
+              </div>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
               <div style={{fontFamily:T.mono,fontSize:10,color:"#777",fontWeight:700}}>{p.xp.toLocaleString()}</div>
@@ -611,15 +635,17 @@ function XPBar({user}){
       <div style={{fontFamily:T.mono,fontSize:10,color:T.dim}}>Sign in to track your XP and rank</div>
     </div>
   );
-  const nextRankXp = user.rank==="SEED"?5000:user.rank==="GROWTH"?10000:99999;
-  const prevRankXp = user.rank==="SEED"?0:user.rank==="GROWTH"?5000:10000;
+  const rankMeta = xpToRankMeta(user.xp);
+  const currRank = rankMeta.tier;
+  const nextRankXp = currRank==="SEED"?5000:currRank==="GROWTH"?10000:99999;
+  const prevRankXp = currRank==="SEED"?0:currRank==="GROWTH"?5000:10000;
   const pct = Math.min(100,Math.round(((user.xp-prevRankXp)/(nextRankXp-prevRankXp))*100));
-  const nextRank = user.rank==="SEED"?"GROWTH":user.rank==="GROWTH"?"APEX":"MAX";
+  const nextRank = currRank==="SEED"?"GROWTH":currRank==="GROWTH"?"APEX":"MAX";
   return(
     <div style={{background:T.surf,border:`2px solid ${T.border}`,padding:"14px 20px",display:"flex",alignItems:"center",gap:20}}>
       <div style={{flex:1}}>
         <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
-          <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:2}}>{user.rank} → {nextRank}</span>
+          <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:2}}>{currRank} → {nextRank}</span>
           <span style={{fontFamily:T.mono,fontSize:8,color:T.gold}}>{user.xp.toLocaleString()} / {nextRankXp.toLocaleString()} XP</span>
         </div>
         <div style={{height:4,background:T.muted}}>
@@ -627,7 +653,10 @@ function XPBar({user}){
         </div>
         <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginTop:3,letterSpacing:1}}>{(nextRankXp-user.xp).toLocaleString()} XP to {nextRank}</div>
       </div>
-      <div style={{textAlign:"right"}}><div style={{fontFamily:T.serif,fontSize:18,color:T.gold,fontWeight:700,lineHeight:1}}>{user.rank}</div><div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1}}>RANK</div></div>
+      <div style={{textAlign:"right"}}>
+        <div style={{fontFamily:T.serif,fontSize:18,color:T.gold,fontWeight:700,lineHeight:1}}>{currRank}</div>
+        <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1}}>LV {rankMeta.level}</div>
+      </div>
     </div>
   );
 }
@@ -899,7 +928,7 @@ function FreshMartSim({onBack,onComplete}){
 /* ═══════════════════════════════════════════════════════════════════
    LOBBY
 ═══════════════════════════════════════════════════════════════════ */
-function Lobby({onNav,user,leaderboard,feed,caseList}){
+function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
   const [hov,setHov]=useState(null);
   const list = caseList||CASE_LIST_FALLBACK;
   const modes=[
@@ -942,11 +971,22 @@ function Lobby({onNav,user,leaderboard,feed,caseList}){
             <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>FEATURED CASES</div>
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               {list.map(c=>(
-                <div key={c.id} onClick={()=>onNav(`case-${c.id}`)} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"13px 16px",cursor:"pointer",display:"flex",alignItems:"center",gap:14,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DC[c.diff]+"55";e.currentTarget.style.background="#0e0e12";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.surf;}}>
+                <div key={c.id}
+                  onClick={()=>{
+                    if(canAccessDifficulty(user?.xp||0, c.diff)) onNav(`case-${c.id}`);
+                  }}
+                  style={{background:T.surf,border:`1px solid ${T.border}`,padding:"13px 16px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",display:"flex",alignItems:"center",gap:14,transition:"all .15s",opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.58}}
+                  onMouseEnter={e=>{e.currentTarget.style.borderColor=DC[c.diff]+"55";e.currentTarget.style.background="#0e0e12";}}
+                  onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.surf;}}>
                   <div style={{width:3,height:38,background:DC[c.diff],flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontFamily:T.sans,fontSize:13,color:"#ddd",fontWeight:600,marginBottom:2}}>{c.label}{c.hasSim&&<span style={{marginLeft:8,fontFamily:T.mono,fontSize:7,color:T.blue,border:`1px solid ${T.blue}44`,padding:"1px 6px",letterSpacing:1}}>SIM</span>}</div>
                     <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{c.sub}</div>
+                    {!canAccessDifficulty(user?.xp||0, c.diff)&&(
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.red,marginTop:5,letterSpacing:1}}>
+                        Unlocks at Lv {DIFF_UNLOCK_LEVEL[c.diff]}
+                      </div>
+                    )}
                   </div>
                   <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
                     <Tag color={DC[c.diff]} small>{c.diff}</Tag>
@@ -959,7 +999,7 @@ function Lobby({onNav,user,leaderboard,feed,caseList}){
           </div>
         </div>
         <div style={{width:276,borderLeft:`2px solid ${T.border}`,overflowY:"auto",padding:18,display:"flex",flexDirection:"column",gap:14,flexShrink:0}}>
-          <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id}/>
+          <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
           <FeedPanel feed={feed}/>
         </div>
       </div>
@@ -970,11 +1010,12 @@ function Lobby({onNav,user,leaderboard,feed,caseList}){
 /* ═══════════════════════════════════════════════════════════════════
    CASE BROWSER
 ═══════════════════════════════════════════════════════════════════ */
-function CaseBrowser({onNav,onBack,caseList,user,leaderboard,feed}){
+function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,feed}){
   const [filter,setFilter]=useState("all");
+  const [diffFilter,setDiffFilter]=useState("all");
   const [hov,setHov]=useState(null);
   const list = caseList||CASE_LIST_FALLBACK;
-  const filtered=list.filter(c=>filter==="all"||c.type===filter);
+  const filtered=list.filter(c=>(filter==="all"||c.type===filter) && (diffFilter==="all"||c.diff===diffFilter));
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <TopBar label="CASE SIMULATION" sub="SELECT CASE" onBack={onBack}/>
@@ -995,9 +1036,44 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,feed}){
             {filter==="all"?"ALL CASES":filter==="scenario"?"BUSINESS SCENARIOS":"FINANCIAL STATEMENTS"}
             <span style={{color:T.dim,marginLeft:8}}>({filtered.length} available)</span>
           </div>
+          <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            {["all","SEED","GROWTH","APEX"].map(id=>{
+              const active = diffFilter===id;
+              const color = id==="all" ? T.dim : DC[id];
+              return(
+                <button
+                  key={id}
+                  onClick={()=>setDiffFilter(id)}
+                  style={{
+                    background:active?`${color}1a`:"transparent",
+                    border:`1px solid ${active?color:T.border}`,
+                    color:active?(id==="all"?"#bbb":color):T.dim,
+                    fontFamily:T.mono,
+                    fontSize:9,
+                    padding:"6px 10px",
+                    letterSpacing:1.2,
+                    cursor:"pointer"
+                  }}
+                >
+                  {id==="all"?"ALL DIFFICULTY":id}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1,marginBottom:12}}>
+            Your level: <span style={{color:T.gold,fontWeight:700}}>Lv {xpToLevel(user?.xp||0)}</span> ·
+            GROWTH unlocks at Lv {DIFF_UNLOCK_LEVEL.GROWTH} ·
+            APEX unlocks at Lv {DIFF_UNLOCK_LEVEL.APEX}
+          </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtered.map(c=>(
-              <div key={c.id} onClick={()=>onNav(`play-${c.id}`)} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",cursor:"pointer",display:"flex",gap:16,alignItems:"flex-start",transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=DC[c.diff]+"55";e.currentTarget.style.background="#0e0e12";}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.surf;}}>
+              <div key={c.id}
+                onClick={()=>{
+                  if(canAccessDifficulty(user?.xp||0, c.diff)) onNav(`play-${c.id}`);
+                }}
+                style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",display:"flex",gap:16,alignItems:"flex-start",transition:"all .15s",opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.58}}
+                onMouseEnter={e=>{e.currentTarget.style.borderColor=DC[c.diff]+"55";e.currentTarget.style.background="#0e0e12";}}
+                onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.surf;}}>
                 <div style={{width:4,alignSelf:"stretch",background:DC[c.diff],flexShrink:0,minHeight:46}}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:5,flexWrap:"wrap"}}>
@@ -1008,10 +1084,19 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,feed}){
                   </div>
                   <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1,marginBottom:3}}>{c.sector}</div>
                   <div style={{fontFamily:T.sans,fontSize:12,color:"#555"}}>{c.sub}</div>
+                  {!canAccessDifficulty(user?.xp||0, c.diff)&&(
+                    <div style={{fontFamily:T.mono,fontSize:8,color:T.red,marginTop:7,letterSpacing:1}}>
+                      LOCKED · Unlocks at Lv {DIFF_UNLOCK_LEVEL[c.diff]}
+                    </div>
+                  )}
                   {c.hasSim&&(
                     <button
-                      onClick={(e)=>{e.stopPropagation();onNav(`sim-${c.id}`);}}
-                      style={{marginTop:10,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:9,padding:"6px 10px",cursor:"pointer",letterSpacing:1.5}}
+                      onClick={(e)=>{
+                        e.stopPropagation();
+                        if(canAccessDifficulty(user?.xp||0, c.diff)) onNav(`sim-${c.id}`);
+                      }}
+                      disabled={!canAccessDifficulty(user?.xp||0, c.diff)}
+                      style={{marginTop:10,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:9,padding:"6px 10px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",letterSpacing:1.5,opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.45}}
                     >
                       OPEN LIVE SIM
                     </button>
@@ -1026,7 +1111,7 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,feed}){
           </div>
         </div>
         <div style={{width:272,borderLeft:`2px solid ${T.border}`,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12,flexShrink:0}}>
-          <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id}/>
+          <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
           <FeedPanel feed={feed}/>
         </div>
       </div>
@@ -1523,6 +1608,34 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
     const pts = opt?.score||0;
     return{q:q.text.slice(0,80)+"…", verdict:pts===100?"✓ Optimal":pts>=70?"◎ Strong":pts>=50?"△ Partial":"✗ Missed", pts, insight:q.insight||""};
   })||[];
+  const financialDecisionImpacts = (caseData?.type==="financial" ? (caseData?.questions||[])
+    .map((q,i)=>{
+      const ans = answers?.[q.id];
+      const opt = q.options?.find(o=>o.id===ans);
+      const pts = opt?.score||0;
+      if(pts>=100) return null;
+      const impactText = q.wrongMoves?.[ans] || q.insight || "This choice weakens financial decision quality for this case.";
+      const effectSource = `${q.text} ${impactText}`.toLowerCase();
+      const tags = [];
+      if(/profit|margin|revenue|expense|cogs|income|earnings|depreciation|nim|cost/.test(effectSource)) tags.push("P&L");
+      if(/asset|liability|equity|inventory|debt|capital|car|working capital|balance sheet/.test(effectSource)) tags.push("Balance Sheet");
+      if(/cash|liquidity|cash flow|burn|cycle|operating cash|wc/.test(effectSource)) tags.push("Cash Flow");
+      if(!tags.length) tags.push("P&L");
+      return{
+        qNo:i+1,
+        pts,
+        tags,
+        impactText,
+        severity: pts<50 ? "high" : pts<75 ? "medium" : "low",
+      };
+    })
+    .filter(Boolean) : []);
+  const financialImpactSummary = financialDecisionImpacts.reduce((acc, row)=>{
+    row.tags.forEach(tag=>{ acc[tag] = (acc[tag]||0) + 1; });
+    return acc;
+  }, {});
+  const sortedFinancialImpactSummary = Object.entries(financialImpactSummary)
+    .sort((a,b)=>b[1]-a[1]);
 
   /* insights list */
   const keyInsightLines = isSimResult
@@ -1677,6 +1790,40 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
         {/* ── BREAKDOWN TAB ── */}
         {tab==="breakdown"&&!isSimResult&&(
           <div style={{animation:"fadeUp .3s both"}}>
+            {caseData?.type==="financial"&&financialDecisionImpacts.length>0&&(
+              <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:14}}>
+                <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>FINANCIAL STATEMENT IMPACT OF MISSED DECISIONS</div>
+                {sortedFinancialImpactSummary.length>0&&(
+                  <div style={{background:"#0f0f12",border:`1px solid ${T.muted}`,padding:"10px 12px",marginBottom:9}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1.5,marginBottom:5}}>MOST AFFECTED AREAS</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                      {sortedFinancialImpactSummary.map(([tag,count],idx)=>{
+                        const c = tag==="P&L" ? T.gold : tag==="Balance Sheet" ? T.blue : tag==="Cash Flow" ? T.green : T.dim;
+                        return(
+                          <span key={tag} style={{fontFamily:T.mono,fontSize:9,color:c,border:`1px solid ${c}55`,background:`${c}14`,padding:"3px 8px",letterSpacing:1}}>
+                            #{idx+1} {tag} ({count})
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {financialDecisionImpacts.map((r,idx)=>{
+                    const c = r.severity==="high"?T.red:r.severity==="medium"?T.gold:T.blue;
+                    return(
+                      <div key={idx} style={{background:"#0f0f12",border:`1px solid ${c}33`,padding:"10px 12px",borderLeft:`3px solid ${c}`}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:5,flexWrap:"wrap"}}>
+                          <div style={{fontFamily:T.mono,fontSize:9,color:"#bbb"}}>Q{r.qNo} · Impacted: {r.tags.join(" + ")}</div>
+                          <div style={{fontFamily:T.mono,fontSize:8,color:c,letterSpacing:1.5,fontWeight:700}}>SEVERITY: {r.severity.toUpperCase()}</div>
+                        </div>
+                        <div style={{fontFamily:T.sans,fontSize:11.5,color:"#8d8d99",lineHeight:1.65}}>{r.impactText}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:14}}>QUESTION BREAKDOWN</div>
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {caseData.questions.map((q,i)=>{
@@ -2026,7 +2173,15 @@ export default function App(){
   const [showAuth,setShowAuth]   = useState(false);
 
   /* Live data from Supabase */
-  const [leaderboard,setLeaderboard] = useState([]);
+  const [leaderboard,setLeaderboard] = useState(()=>{
+    try{
+      const cached = JSON.parse(localStorage.getItem("ca_leaderboard")||"[]");
+      return Array.isArray(cached) ? cached : [];
+    }catch{
+      return [];
+    }
+  });
+  const [leaderboardLoading,setLeaderboardLoading] = useState(false);
   const [feed,setFeed]               = useState([]);
   const [caseList,setCaseList]       = useState(CASE_LIST_FALLBACK);
   const [attempts,setAttempts]       = useState([]);
@@ -2043,10 +2198,10 @@ export default function App(){
         .catch(()=>clearSession());
     }
     fetchLiveData();
-    // Refresh leaderboard every 60s
-    const iv = setInterval(fetchLeaderboard, 60000);
+    // Refresh leaderboard every 60s with latest auth context
+    const iv = setInterval(()=>fetchLeaderboard({ silent:true }), 60000);
     return ()=>clearInterval(iv);
-  },[]);
+  },[token]);
 
   async function fetchLiveData(){
     await Promise.all([fetchLeaderboard(), fetchFeed(), fetchCaseList()]);
@@ -2067,15 +2222,23 @@ export default function App(){
     }
   }
 
-  async function fetchLeaderboard(){
+  async function fetchLeaderboard({ silent=false } = {}){
     try{
+      if(!silent) setLeaderboardLoading(true);
       const data = await supabase.from("profiles",{
         select:"id,username,xp,rank,cases_completed,xp_gained_today",
         order:"xp.desc",
         limit:10,
       }, token||undefined);
-      if(Array.isArray(data)) setLeaderboard(data);
+      if(Array.isArray(data)){
+        const normalized = data.map(p=>({ ...p, rank:xpToRank(p.xp) }));
+        setLeaderboard(normalized);
+        localStorage.setItem("ca_leaderboard", JSON.stringify(normalized));
+      }
     }catch(e){ console.warn("Leaderboard fetch failed:", e.message); }
+    finally{
+      if(!silent) setLeaderboardLoading(false);
+    }
   }
 
   async function fetchFeed(){
@@ -2159,22 +2322,16 @@ export default function App(){
     const attempt = normalizeAttemptScore(scoreData);
 
     try{
-      const priorAttempts = await supabase.from("user_attempts",{
-        select:"score,max_score",
-        eq:{ user_id:user.id, case_id:caseId },
-      }, token);
-
-      const prevBestPct = Array.isArray(priorAttempts)
-        ? priorAttempts.reduce((best, a)=>{
-            const s = Number(a?.score) || 0;
-            const m = Math.max(1, Number(a?.max_score) || 100);
-            return Math.max(best, (s/m)*100);
-          }, 0)
-        : 0;
-
       const currentPct = (attempt.score/attempt.maxScore)*100;
-      const improvementPct = Math.max(0, currentPct - prevBestPct);
-      const gained = Math.round((fullReward * improvementPct) / 100);
+      // Difficulty-weighted XP by score band: consistent across attempts.
+      const xpMultiplier =
+        currentPct>=95 ? 1 :
+        currentPct>=85 ? 0.85 :
+        currentPct>=70 ? 0.7 :
+        currentPct>=55 ? 0.55 :
+        currentPct>=40 ? 0.4 :
+        currentPct>0 ? 0.25 : 0;
+      const gained = Math.round(fullReward * xpMultiplier);
       const completedCount = (user.cases_completed||0)+1;
 
       // Log attempt (always), even when no XP is gained
@@ -2190,7 +2347,7 @@ export default function App(){
 
       if(gained>0){
         const newXp  = (user.xp||0) + gained;
-        const prevRank = user.rank;
+        const prevRank = xpToRank(user.xp||0);
         const newRank  = xpToRank(newXp);
         const updated  = {
           ...user,
@@ -2212,7 +2369,7 @@ export default function App(){
 
         await supabase.insert("activity_feed",{
           username: user.username,
-          action_text: `improved ${caseId} — +${gained} XP · ${newRank}`,
+          action_text: `completed ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}`,
           type: "score",
           created_at: new Date().toISOString(),
           time_ago: "just now",
@@ -2300,7 +2457,7 @@ export default function App(){
   }
 
   /* Shared props passed to screens that show sidebar panels */
-  const sidebarProps = { user, leaderboard, feed };
+  const sidebarProps = { user, leaderboard, leaderboardLoading, feed };
   const caseNameById = (id)=>{
     const fromList = caseList.find(c=>c.id===id)?.label;
     const fromAll = ALL_CASES[id]?.company;
@@ -2406,7 +2563,7 @@ export default function App(){
                   <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginBottom:10}}>XP STATS WINDOW</div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:16}}>
                     <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>USER</div><div style={{fontFamily:T.serif,fontSize:20,color:T.gold,fontWeight:800}}>{user.username}</div></div>
-                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>RANK</div><div style={{fontFamily:T.serif,fontSize:20,color:DC[user.rank]||T.gold,fontWeight:800}}>{user.rank}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>RANK</div><div style={{fontFamily:T.serif,fontSize:20,color:DC[xpToRank(user.xp)]||T.gold,fontWeight:800}}>{xpToRank(user.xp)} · Lv {xpToLevel(user.xp)}</div></div>
                     <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>TOTAL XP</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{(user.xp||0).toLocaleString()}</div></div>
                     <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>CASES COVERED</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{bestByCase.length}</div></div>
                   </div>
