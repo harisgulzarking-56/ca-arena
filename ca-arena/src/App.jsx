@@ -221,7 +221,7 @@ const Nodes = {
         label:"Cut costs AND keep waiting — sales will pick up",
         desc:"Reduce expenses and give it one more month. The location is too good to fail.",
         impact:{cash:-700000,monthlySales:-20000,customerCount:-12,staffMorale:-22,ownerStress:+28},
-        next:"end_closure",                              // ← direct to closure now
+        next:"cost_cut",
       },
     ],
   },
@@ -259,8 +259,8 @@ const Nodes = {
   },
   
   end_closure:{
-   id:"end_closure", month:4, title:"FreshMart Closes",
-   narrative:`Cash hit zero in the third week of month 4. The landlord padlocked
+   id:"end_closure", month:3, title:"FreshMart Closes",
+   narrative:`Cash hit zero in the third week of month 3. The landlord padlocked
               the shutters on Tuesday morning. Staff received a WhatsApp message
               informing them not to come in. Suppliers are owed PKR 1.8M.
               The owner is now personally liable for the outstanding rent.`,
@@ -672,27 +672,14 @@ function FreshMartSim({onBack,onComplete}){
 
   const node=Nodes[nodeId];
   const isEnding=node?.isEnding;
-  console.log("NODE ID:", nodeId);
-  console.log("NODE OBJECT:", Nodes[nodeId]);
-  console.log("CHOICES:", Nodes[nodeId]?.choices);
   
-  useEffect(() => {
-   if (phase === "consequence" && chosen) {
-     const timer = setTimeout(() => {
-      setNodeId(chosen.next);
-      setPhase("decision");
-    }, 800);
-
-    return () => clearTimeout(timer);
-    }
-  }, [phase, chosen]);
-
   function applyImpact(base,imp){
     const n={...base};
     Object.entries(imp||{}).forEach(([k,v])=>{if(k in n)n[k]=Math.max(0,n[k]+v);});
     return n;
   }
   function handleSelect(choice){
+    if(phase!=="decision" || isEnding || !choice?.next) return;
     setChosen(choice);
     const ns=applyImpact(stats,choice.impact);
     setPrevStats({...stats});
@@ -703,9 +690,10 @@ function FreshMartSim({onBack,onComplete}){
   }
   function handleContinue(){
     if(isEnding){
-      onComplete&&onComplete({log,stats,endingType:node.endingType,endingTitle:node.endingTitle,keyInsights:node.keyInsights,caseCompany:"FreshMart Grocery",caseDiff:"SEED",caseType:"scenario"});
+      onComplete&&onComplete({log,stats,endingType:node.endingType,endingTitle:node.endingTitle,keyInsights:node.keyInsights,caseCompany:"FreshMart Grocery",caseDiff:"SEED",caseType:"scenario",caseId:"GRC-SEED-01"});
       return;
     }
+    if(!chosen?.next) return;
     // Navigate immediately — no timeout
     setNodeId(chosen.next);
     setChosen(null);
@@ -717,6 +705,7 @@ function FreshMartSim({onBack,onComplete}){
   /* ── When we land on an ending node in "decision" phase,
        immediately show it as a conclusion — no extra click needed ── */
   const showEndingDirect = phase==="decision" && isEnding;
+  const consequenceNode = phase==="consequence" && chosen?.next ? Nodes[chosen.next] : null;
   const endColor = node?.endingType==="perfect" ? T.green
                  : node?.endingType==="good"    ? T.green
                  : node?.endingType==="warn"    ? T.gold
@@ -795,26 +784,26 @@ function FreshMartSim({onBack,onComplete}){
                 <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:4}}>▸ YOU CHOSE</div>
                 <div style={{fontFamily:T.sans,fontSize:13,color:T.gold,fontWeight:600}}>{chosen.label}</div>
               </div>
-              {node.narrative&&(
+              {consequenceNode?.narrative&&(
                 <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"18px 20px",marginBottom:14,animation:"fadeUp .35s both"}}>
                   <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:8}}>▸ WHAT HAPPENED</div>
-                  <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.8}}>{node.narrative}</p>
+                  <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.8}}>{consequenceNode.narrative}</p>
                 </div>
               )}
-              {/* Ending panel — shown in consequence if the CURRENT node is an ending */}
-              {isEnding&&(
+              {/* Ending panel — shown in consequence if the selected path leads to an ending */}
+              {consequenceNode?.isEnding&&(
                 <div style={{animation:"fadeUp .4s .2s both"}}>
-                  <div style={{background:`${endColor}0a`,border:`2px solid ${endColor}44`,padding:"22px 22px",marginBottom:18}}>
-                    <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:8}}>
-                      {endLabel}
+                  <div style={{background:`${consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red}0a`,border:`2px solid ${(consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red)}44`,padding:"22px 22px",marginBottom:18}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,letterSpacing:3,marginBottom:8}}>
+                      {consequenceNode.endingType==="perfect" ? "★ OPTIMAL PATH" : consequenceNode.endingType==="good" ? "✓ RECOVERED" : consequenceNode.endingType==="warn" ? "⚠ SURVIVED — BARELY" : "✗ BUSINESS FAILED"}
                     </div>
-                    <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{node.endingTitle}</div>
-                    <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{node.endingText}</pre>
+                    <div style={{fontFamily:T.serif,fontSize:22,color:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,fontWeight:700,marginBottom:12}}>{consequenceNode.endingTitle}</div>
+                    <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{consequenceNode.endingText}</pre>
                   </div>
-                  <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
+                  <button onClick={handleContinue} style={{width:"100%",background:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
                 </div>
               )}
-              {!isEnding&&(
+              {!consequenceNode?.isEnding&&(
                 <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE →</button>
               )}
             </div>
@@ -827,11 +816,6 @@ function FreshMartSim({onBack,onComplete}){
             <div style={{animation:"fadeUp .3s both"}}>
               <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:10}}>▸ YOUR MOVE</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {(() => {
-                 console.log("CHOICES LENGTH:", node?.choices?.length);
-                 console.log("CHOICES:", node?.choices);
-                 return null;
-                })()}
                 {node.choices?.map(c=>(
                   <div key={c.id} onMouseEnter={()=>setHov(c)} onMouseLeave={()=>setHov(null)} onClick={()=>handleSelect(c)} style={{border:`2px solid ${hov?.id===c.id?T.gold:T.border}`,background:hov?.id===c.id?T.goldD:T.surf,padding:"14px 16px",cursor:"pointer",transition:"all .15s",display:"flex",gap:12,alignItems:"flex-start"}}>
                     <div style={{width:20,height:20,border:`2px solid ${hov?.id===c.id?T.gold:T.mid}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"border-color .15s"}}>
@@ -1024,6 +1008,14 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,feed}){
                   </div>
                   <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1,marginBottom:3}}>{c.sector}</div>
                   <div style={{fontFamily:T.sans,fontSize:12,color:"#555"}}>{c.sub}</div>
+                  {c.hasSim&&(
+                    <button
+                      onClick={(e)=>{e.stopPropagation();onNav(`sim-${c.id}`);}}
+                      style={{marginTop:10,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:9,padding:"6px 10px",cursor:"pointer",letterSpacing:1.5}}
+                    >
+                      OPEN LIVE SIM
+                    </button>
+                  )}
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>avg score</div>
@@ -1507,12 +1499,13 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
 
   const [tab,setTab]       = useState("results");
   const [copied,setCopied] = useState(false);
+  const cardRef = useRef(null);
 
   const isSimResult  = !!simResult;
   const company      = simResult?.caseCompany || caseData?.company || "";
   const diff         = simResult?.caseDiff    || caseData?.difficulty || "SEED";
   const ctype        = simResult?.caseType    || caseData?.type || "scenario";
-  const caseId       = caseData?.id || "";
+  const caseId       = simResult?.caseId || caseData?.id || "";
 
   const displayPct   = isSimResult ? null  : pct;
   const displayScore = isSimResult ? null  : score;
@@ -1536,8 +1529,52 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
     ? (simResult.keyInsights||[])
     : (caseData?.questions?.map(q=>q.insight)||[]);
 
-  const synopsis  = CASE_SYNOPSIS_SHORT[caseId] || caseData?.synopsis?.slice(0,200)+"…" || "";
+  const synopsis  = CASE_SYNOPSIS_SHORT[caseId] || (caseData?.synopsis ? `${caseData.synopsis.slice(0,200)}…` : "");
   const concepts  = CASE_CONCEPTS[caseId] || [];
+
+  async function downloadCardPng(){
+    const node = cardRef.current;
+    if(!node) return false;
+    try{
+      const width = Math.ceil(node.offsetWidth || 900);
+      const height = Math.ceil(node.offsetHeight || 1200);
+      const cloned = node.cloneNode(true);
+      const serialized = new XMLSerializer().serializeToString(cloned);
+      const svg = `
+        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
+          <foreignObject width="100%" height="100%">${serialized}</foreignObject>
+        </svg>
+      `;
+      const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.decoding = "async";
+      await new Promise((resolve,reject)=>{
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = url;
+      });
+      const scale = 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = width * scale;
+      canvas.height = height * scale;
+      const ctx = canvas.getContext("2d");
+      ctx.scale(scale, scale);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0,0,width,height);
+      ctx.drawImage(img,0,0,width,height);
+      URL.revokeObjectURL(url);
+      const a = document.createElement("a");
+      a.href = canvas.toDataURL("image/png");
+      a.download = `ca-arena-${(company||"case").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-linkedin-card.png`;
+      a.click();
+      return true;
+    }catch(e){
+      console.warn("Card download failed:", e);
+      alert("Could not generate PNG in this browser. Please use a screenshot as fallback.");
+      return false;
+    }
+  }
 
   /* ── LinkedIn caption (rich, structured) ── */
   const optimalCount = topAnswers.filter(a=>a.pts===100).length;
@@ -1680,14 +1717,16 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
           <div style={{animation:"fadeUp .3s both"}}>
             <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:14}}>SHARE CARD PREVIEW</div>
 
-            <LinkedInCardPreview
-              company={company} diff={diff} ctype={ctype}
-              displayPct={displayPct} displayGrade={displayGrade} displayGC={displayGC}
-              isSimResult={isSimResult} simResult={simResult}
-              caseData={caseData} score={score} maxScore={maxScore}
-              topAnswers={topAnswers} keyInsightLines={keyInsightLines}
-              synopsis={synopsis} concepts={concepts}
-            />
+            <div ref={cardRef}>
+              <LinkedInCardPreview
+                company={company} diff={diff} ctype={ctype}
+                displayPct={displayPct} displayGrade={displayGrade} displayGC={displayGC}
+                isSimResult={isSimResult} simResult={simResult}
+                caseData={caseData} score={score} maxScore={maxScore}
+                topAnswers={topAnswers} keyInsightLines={keyInsightLines}
+                synopsis={synopsis} concepts={concepts}
+              />
+            </div>
 
             {/* Caption block */}
             <div style={{marginTop:22}}>
@@ -1695,12 +1734,27 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
               <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"14px 16px",marginBottom:14,maxHeight:320,overflowY:"auto"}}>
                 <pre style={{fontFamily:T.sans,fontSize:12.5,color:"#777",lineHeight:1.8,margin:0,whiteSpace:"pre-wrap"}}>{captionParts}</pre>
               </div>
-              <div style={{display:"flex",gap:10}}>
+              <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                 <button onClick={()=>{
                   try{navigator.clipboard.writeText(captionParts);}catch(e){}
                   setCopied(true);setTimeout(()=>setCopied(false),2400);
-                }} style={{flex:1,background:copied?T.green:T.surf,border:`2px solid ${copied?T.green:T.border}`,color:copied?"#000":T.txt,fontFamily:T.mono,fontSize:11,fontWeight:700,padding:"12px",cursor:"pointer",letterSpacing:2,transition:"all .25s"}}>{copied?"✓ COPIED TO CLIPBOARD":"COPY CAPTION"}</button>
-                <button style={{flex:1,background:"#0077b5",border:"none",color:"#fff",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2}}>SHARE ON LINKEDIN →</button>
+                }} style={{flex:1,minWidth:180,background:copied?T.green:T.surf,border:`2px solid ${copied?T.green:T.border}`,color:copied?"#000":T.txt,fontFamily:T.mono,fontSize:11,fontWeight:700,padding:"12px",cursor:"pointer",letterSpacing:2,transition:"all .25s"}}>{copied?"✓ COPIED TO CLIPBOARD":"COPY CAPTION"}</button>
+                <button onClick={downloadCardPng} style={{flex:1,minWidth:180,background:T.surf,border:`2px solid ${T.border}`,color:T.txt,fontFamily:T.mono,fontSize:11,fontWeight:700,padding:"12px",cursor:"pointer",letterSpacing:2}}>DOWNLOAD CARD PNG</button>
+                <button
+                  onClick={async ()=>{
+                    await downloadCardPng();
+                    try{ navigator.clipboard.writeText(captionParts); }catch(e){}
+                    setCopied(true);setTimeout(()=>setCopied(false),2400);
+                    const linkedInUrl = "https://www.linkedin.com/feed/?shareActive=true";
+                    const win = window.open(linkedInUrl, "_blank", "noopener,noreferrer");
+                    if(!win){
+                      window.location.href = linkedInUrl;
+                    }
+                  }}
+                  style={{flex:1,minWidth:180,background:"#0077b5",border:"none",color:"#fff",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2}}
+                >
+                  DOWNLOAD + SHARE ON LINKEDIN →
+                </button>
               </div>
             </div>
           </div>
@@ -1975,6 +2029,7 @@ export default function App(){
   const [leaderboard,setLeaderboard] = useState([]);
   const [feed,setFeed]               = useState([]);
   const [caseList,setCaseList]       = useState(CASE_LIST_FALLBACK);
+  const [attempts,setAttempts]       = useState([]);
 
   /* XP toast */
   const [xpToast,setXpToast] = useState(null); // {xp, rank, prevRank}
@@ -1995,6 +2050,21 @@ export default function App(){
 
   async function fetchLiveData(){
     await Promise.all([fetchLeaderboard(), fetchFeed(), fetchCaseList()]);
+  }
+
+  async function fetchUserAttempts(){
+    if(!user?.id || !token) return;
+    try{
+      const data = await supabase.from("user_attempts",{
+        select:"case_id,score,max_score,ending_type,completed_at",
+        eq:{ user_id:user.id },
+        order:"completed_at.desc",
+        limit:200,
+      }, token);
+      if(Array.isArray(data)) setAttempts(data);
+    }catch(e){
+      console.warn("Attempts fetch failed:", e.message);
+    }
   }
 
   async function fetchLeaderboard(){
@@ -2051,6 +2121,10 @@ export default function App(){
     fetchLeaderboard();
   }
 
+  useEffect(()=>{
+    if(screen==="progress") fetchUserAttempts();
+  },[screen, user?.id, token]);
+
   async function handleSignOut(){
     if(token) await supabase.auth.signOut(token).catch(()=>{});
     clearSession();
@@ -2062,54 +2136,111 @@ export default function App(){
     localStorage.removeItem("ca_user");
   }
 
+  function normalizeAttemptScore(scoreData){
+    const maxScore = Math.max(1, Number(scoreData?.maxScore) || 100);
+    let score = Number(scoreData?.score);
+    if(!Number.isFinite(score)){
+      const endingScore = {
+        perfect: 100,
+        good: 85,
+        warn: 60,
+        bad: 30,
+      };
+      score = endingScore[scoreData?.endingType] ?? 0;
+    }
+    score = Math.max(0, Math.min(score, maxScore));
+    return { score, maxScore };
+  }
+
   /* ── XP award — called after any case completion ── */
   async function awardXP(diff, caseId, scoreData){
     if(!user||!token) return;
-    const gained = XP_REWARD[diff]||80;
-    const newXp  = (user.xp||0) + gained;
-    const prevRank = user.rank;
-    const newRank  = xpToRank(newXp);
-    const updated  = { ...user, xp:newXp, rank:newRank, cases_completed:(user.cases_completed||0)+1, xp_gained_today:(user.xp_gained_today||0)+gained };
-
-    // Optimistic update
-    setUser(updated);
-    localStorage.setItem("ca_user", JSON.stringify(updated));
-    setXpToast({ xp:gained, rank:newRank, prevRank });
+    const fullReward = XP_REWARD[diff]||80;
+    const attempt = normalizeAttemptScore(scoreData);
 
     try{
-      // Update profile in Supabase
-      await supabase.patch("profiles",
-        { xp:newXp, rank:newRank, cases_completed:updated.cases_completed, xp_gained_today:updated.xp_gained_today },
-        { id:user.id }, token
-      );
+      const priorAttempts = await supabase.from("user_attempts",{
+        select:"score,max_score",
+        eq:{ user_id:user.id, case_id:caseId },
+      }, token);
+
+      const prevBestPct = Array.isArray(priorAttempts)
+        ? priorAttempts.reduce((best, a)=>{
+            const s = Number(a?.score) || 0;
+            const m = Math.max(1, Number(a?.max_score) || 100);
+            return Math.max(best, (s/m)*100);
+          }, 0)
+        : 0;
+
+      const currentPct = (attempt.score/attempt.maxScore)*100;
+      const improvementPct = Math.max(0, currentPct - prevBestPct);
+      const gained = Math.round((fullReward * improvementPct) / 100);
+      const completedCount = (user.cases_completed||0)+1;
+
+      // Log attempt (always), even when no XP is gained
       // Log attempt
       await supabase.insert("user_attempts",{
         user_id: user.id,
         case_id: caseId,
-        score:   scoreData?.score||0,
-        max_score: scoreData?.maxScore||100,
+        score:   attempt.score,
+        max_score: attempt.maxScore,
         ending_type: scoreData?.endingType||null,
         completed_at: new Date().toISOString(),
       }, token);
-      // Post to activity feed
-      await supabase.insert("activity_feed",{
-        username: user.username,
-        action_text: `completed ${caseId} — ${newRank}`,
-        type: "score",
-        created_at: new Date().toISOString(),
-        time_ago: "just now",
-      }, token).catch(()=>{});
-      // Refresh leaderboard
-      fetchLeaderboard();
+
+      if(gained>0){
+        const newXp  = (user.xp||0) + gained;
+        const prevRank = user.rank;
+        const newRank  = xpToRank(newXp);
+        const updated  = {
+          ...user,
+          xp:newXp,
+          rank:newRank,
+          cases_completed:completedCount,
+          xp_gained_today:(user.xp_gained_today||0)+gained
+        };
+
+        // Optimistic update
+        setUser(updated);
+        localStorage.setItem("ca_user", JSON.stringify(updated));
+        setXpToast({ xp:gained, rank:newRank, prevRank });
+
+        await supabase.patch("profiles",
+          { xp:newXp, rank:newRank, cases_completed:updated.cases_completed, xp_gained_today:updated.xp_gained_today },
+          { id:user.id }, token
+        );
+
+        await supabase.insert("activity_feed",{
+          username: user.username,
+          action_text: `improved ${caseId} — +${gained} XP · ${newRank}`,
+          type: "score",
+          created_at: new Date().toISOString(),
+          time_ago: "just now",
+        }, token).catch(()=>{});
+
+        fetchLeaderboard();
+      }else{
+        const updated = { ...user, cases_completed:completedCount };
+        setUser(updated);
+        localStorage.setItem("ca_user", JSON.stringify(updated));
+        await supabase.patch("profiles",
+          { cases_completed:completedCount },
+          { id:user.id }, token
+        );
+      }
     }catch(e){ console.warn("XP save failed:", e.message); }
   }
 
   /* ── Navigation ── */
   function nav(s){
-    if(s.startsWith("play-")||s.startsWith("case-")){
+    if(s.startsWith("sim-")){
+      const id = s.replace("sim-","");
+      setActiveCaseId(id);
+      setScreen("freshmart-sim");
+    } else if(s.startsWith("play-")||s.startsWith("case-")){
       const id = s.replace("play-","").replace("case-","");
       setActiveCaseId(id);
-      setScreen(id==="GRC-SEED-01" ? "freshmart-sim" : "sim");
+      setScreen("sim");
     } else {
       setScreen(s);
     }
@@ -2139,7 +2270,11 @@ export default function App(){
             <span key={x} style={{fontFamily:T.mono,fontSize:10,color:T.dim,cursor:"pointer",letterSpacing:1.5,transition:"color .15s"}}
               onMouseEnter={e=>e.currentTarget.style.color=T.gold}
               onMouseLeave={e=>e.currentTarget.style.color=T.dim}
-              onClick={()=>x==="Boardroom"&&setScreen("boardroom")}>
+              onClick={()=>{
+                if(x==="Boardroom") setScreen("boardroom");
+                if(x==="Progress") setScreen("progress");
+                if(x==="Rankings") setScreen("lobby");
+              }}>
               {x.toUpperCase()}
             </span>
           ))}
@@ -2166,6 +2301,65 @@ export default function App(){
 
   /* Shared props passed to screens that show sidebar panels */
   const sidebarProps = { user, leaderboard, feed };
+  const caseNameById = (id)=>{
+    const fromList = caseList.find(c=>c.id===id)?.label;
+    const fromAll = ALL_CASES[id]?.company;
+    return fromList || fromAll || id;
+  };
+  const bestByCase = Object.values(
+    (attempts||[]).reduce((acc,a)=>{
+      const score = Number(a?.score)||0;
+      const maxScore = Math.max(1, Number(a?.max_score)||100);
+      const pct = Math.round((score/maxScore)*100);
+      if(!acc[a.case_id] || pct>acc[a.case_id].pct){
+        acc[a.case_id] = { caseId:a.case_id, pct, attempts:1, lastAt:a.completed_at };
+      }else{
+        acc[a.case_id].attempts += 1;
+      }
+      return acc;
+    },{})
+  ).sort((a,b)=>b.pct-a.pct);
+  const attemptsWithType = (attempts||[]).map((a)=>{
+    const t = ALL_CASES[a.case_id]?.type || caseList.find(c=>c.id===a.case_id)?.type || "scenario";
+    const score = Number(a?.score)||0;
+    const maxScore = Math.max(1, Number(a?.max_score)||100);
+    const pct = Math.round((score/maxScore)*100);
+    return { ...a, type:t, pct };
+  });
+  const avgPct = (arr)=>arr.length ? Math.round(arr.reduce((s,x)=>s+x.pct,0)/arr.length) : 0;
+  const scenarioAttempts = attemptsWithType.filter(a=>a.type==="scenario");
+  const financialAttempts = attemptsWithType.filter(a=>a.type==="financial");
+  const businessAvg = avgPct(scenarioAttempts);
+  const financialAvg = avgPct(financialAttempts);
+  const allAvg = avgPct(attemptsWithType);
+  const sortedByTime = [...attemptsWithType].reverse();
+  const mid = Math.floor(sortedByTime.length/2);
+  const earlyAvg = avgPct(sortedByTime.slice(0, mid||1));
+  const recentAvg = avgPct(sortedByTime.slice(mid||0));
+  const improvement = Math.max(0, recentAvg-earlyAvg);
+  const consistency = attemptsWithType.length<2 ? 50 : Math.max(0, Math.round(100 - Math.sqrt(attemptsWithType.reduce((s,a)=>s+Math.pow(a.pct-allAvg,2),0)/attemptsWithType.length)));
+  const coverage = caseList.length ? Math.round((bestByCase.length/caseList.length)*100) : 0;
+  const bestAvg = bestByCase.length ? Math.round(bestByCase.reduce((s,c)=>s+c.pct,0)/bestByCase.length) : 0;
+  const skillAxes = [
+    { id:"financial", label:"Financial", value:financialAvg, color:T.blue },
+    { id:"business", label:"Business", value:businessAvg, color:T.gold },
+    { id:"consistency", label:"Consistency", value:consistency, color:T.green },
+    { id:"improvement", label:"Improvement", value:improvement, color:T.green },
+    { id:"coverage", label:"Coverage", value:coverage, color:T.goldM },
+    { id:"quality", label:"Best-Case Quality", value:bestAvg, color:T.blue },
+  ];
+  const sortedAxes = [...skillAxes].sort((a,b)=>b.value-a.value);
+  const strengths = sortedAxes.slice(0,2);
+  const weakPoints = sortedAxes.slice(-2);
+  const radarSize = 260;
+  const radarCx = radarSize/2;
+  const radarCy = radarSize/2;
+  const radarR = 84;
+  const radarPoints = skillAxes.map((axis, i)=>{
+    const angle = (-Math.PI/2) + (i * (2*Math.PI/skillAxes.length));
+    const r = (Math.max(0, Math.min(100, axis.value))/100) * radarR;
+    return `${(radarCx + Math.cos(angle)*r).toFixed(1)},${(radarCy + Math.sin(angle)*r).toFixed(1)}`;
+  }).join(" ");
 
   return(
     <UserCtx.Provider value={{user,token,awardXP}}>
@@ -2196,6 +2390,84 @@ export default function App(){
           <ResultsCard simResult={simResult} onBack={()=>setScreen("lobby")}/>
         )}
         {screen==="boardroom"&&<Boardroom onBack={()=>setScreen("lobby")}/>}
+        {screen==="progress"&&(
+          <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
+            <NavBar/>
+            <div style={{padding:"28px 30px"}}>
+              {!user&&(
+                <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"20px 22px"}}>
+                  <div style={{fontFamily:T.serif,fontSize:24,color:T.txt,fontWeight:800,marginBottom:8}}>Progress</div>
+                  <div style={{fontFamily:T.sans,fontSize:13,color:T.dim,marginBottom:14}}>Sign in to view your profile, covered cases, and performance trend.</div>
+                  <button onClick={()=>setShowAuth(true)} style={{border:`1px solid ${T.goldM}`,background:"transparent",padding:"7px 14px",fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:1.5,cursor:"pointer"}}>SIGN IN / SIGN UP</button>
+                </div>
+              )}
+              {user&&(
+                <>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginBottom:10}}>XP STATS WINDOW</div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:16}}>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>USER</div><div style={{fontFamily:T.serif,fontSize:20,color:T.gold,fontWeight:800}}>{user.username}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>RANK</div><div style={{fontFamily:T.serif,fontSize:20,color:DC[user.rank]||T.gold,fontWeight:800}}>{user.rank}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>TOTAL XP</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{(user.xp||0).toLocaleString()}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>CASES COVERED</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{bestByCase.length}</div></div>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:10,marginBottom:16}}>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginBottom:8}}>ANALYSIS TRACKING</div>
+                      {[{k:"Financial Analysis",v:financialAvg,c:T.blue},{k:"Business Analysis",v:businessAvg,c:T.gold}].map(row=>(
+                        <div key={row.k} style={{marginBottom:10}}>
+                          <div style={{display:"flex",justifyContent:"space-between",fontFamily:T.mono,fontSize:9,color:T.dim,marginBottom:4}}><span>{row.k}</span><span style={{color:row.c,fontWeight:700}}>{row.v}%</span></div>
+                          <div style={{height:5,background:T.muted}}><div style={{height:"100%",width:`${row.v}%`,background:row.c,transition:"width .4s"}}/></div>
+                        </div>
+                      ))}
+                    </div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginBottom:8}}>STRENGTHS & WEAK POINTS</div>
+                      <div style={{fontFamily:T.mono,fontSize:9,color:T.green,marginBottom:6}}>Strengths: {strengths.map(s=>`${s.label} (${s.value}%)`).join(" · ") || "—"}</div>
+                      <div style={{fontFamily:T.mono,fontSize:9,color:T.red}}>Weak Points: {weakPoints.map(s=>`${s.label} (${s.value}%)`).join(" · ") || "—"}</div>
+                    </div>
+                  </div>
+                  <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",marginBottom:16}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginBottom:12}}>HECTOGRAPH · PERFORMANCE SHAPE</div>
+                    <div style={{display:"flex",gap:18,alignItems:"center",flexWrap:"wrap"}}>
+                      <svg width={radarSize} height={radarSize} style={{background:T.surf2,border:`1px solid ${T.border}`}}>
+                        {[0.25,0.5,0.75,1].map((lvl,i)=>(
+                          <polygon key={i} points={skillAxes.map((_,idx)=>{const ang=(-Math.PI/2)+(idx*(2*Math.PI/skillAxes.length));const rr=radarR*lvl;return `${(radarCx+Math.cos(ang)*rr).toFixed(1)},${(radarCy+Math.sin(ang)*rr).toFixed(1)}`;}).join(" ")} fill="none" stroke={T.muted} strokeWidth="1" />
+                        ))}
+                        {skillAxes.map((ax,idx)=>{const ang=(-Math.PI/2)+(idx*(2*Math.PI/skillAxes.length));return <line key={ax.id} x1={radarCx} y1={radarCy} x2={radarCx+Math.cos(ang)*radarR} y2={radarCy+Math.sin(ang)*radarR} stroke={T.muted} strokeWidth="1" />;})}
+                        <polygon points={radarPoints} fill={`${T.gold}22`} stroke={T.gold} strokeWidth="2"/>
+                        {skillAxes.map((ax,idx)=>{const ang=(-Math.PI/2)+(idx*(2*Math.PI/skillAxes.length));const lx=radarCx+Math.cos(ang)*(radarR+18);const ly=radarCy+Math.sin(ang)*(radarR+18);return <text key={`${ax.id}-t`} x={lx} y={ly} fill={T.dim} fontSize="9" textAnchor="middle">{ax.label}</text>;})}
+                      </svg>
+                      <div style={{flex:1,minWidth:240}}>
+                        {skillAxes.map(ax=>(
+                          <div key={ax.id} style={{display:"flex",justifyContent:"space-between",padding:"4px 0",borderBottom:`1px solid ${T.muted}`}}>
+                            <span style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>{ax.label}</span>
+                            <span style={{fontFamily:T.mono,fontSize:10,color:ax.color,fontWeight:700}}>{ax.value}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px"}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginBottom:10}}>BEST RESULTS BY CASE</div>
+                    {bestByCase.length===0&&<div style={{fontFamily:T.sans,fontSize:13,color:T.dim}}>No attempts yet. Complete a case to start tracking progress.</div>}
+                    {bestByCase.map((c)=>(
+                      <div key={c.caseId} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"9px 0",borderBottom:`1px solid ${T.muted}`}}>
+                        <div>
+                          <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,fontWeight:600}}>{caseNameById(c.caseId)}</div>
+                          <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{c.attempts} attempts</div>
+                        </div>
+                        <div style={{textAlign:"right"}}>
+                          <div style={{fontFamily:T.mono,fontSize:12,color:c.pct>=80?T.green:c.pct>=60?T.gold:T.red,fontWeight:700}}>{c.pct}%</div>
+                          <div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>best score</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Auth modal */}
         {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={handleAuth}/>}
