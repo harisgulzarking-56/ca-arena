@@ -698,6 +698,8 @@ function FreshMartSim({onBack,onComplete}){
   const [chosen,setChosen]=useState(null);
   const [log,setLog]=useState([]);
   const topRef=useRef(null);
+  const [isMobile,setIsMobile]=useState(()=>{if(typeof window==="undefined")return false;return window.innerWidth<=900;});
+  useEffect(()=>{if(typeof window==="undefined")return;const onResize=()=>setIsMobile(window.innerWidth<=900);onResize();window.addEventListener("resize",onResize);return()=>window.removeEventListener("resize",onResize);},[]);
 
   const node=Nodes[nodeId];
   const isEnding=node?.isEnding;
@@ -764,8 +766,8 @@ function FreshMartSim({onBack,onComplete}){
         <span style={{fontFamily:T.mono,fontSize:9,color:T.dim,marginLeft:"auto"}}>MONTH {node.month}</span>
       </div>
 
-      <div ref={topRef} style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
-        <div style={{flex:1,overflowY:"auto",padding:"28px 28px"}}>
+      <div ref={topRef} style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden",minHeight:0}}>
+        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"28px 28px"}}>
 
           {/* ── WARNING BADGE ── */}
           {node.isWarning&&<div style={{background:T.redD,border:`1px solid ${T.red}44`,padding:"7px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}><span style={{color:T.red}}>⚠</span><span style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:2}}>CRITICAL SITUATION — BUSINESS AT RISK</span></div>}
@@ -888,7 +890,7 @@ function FreshMartSim({onBack,onComplete}){
         </div>
 
         {/* Stats sidebar */}
-        <div style={{width:268,borderLeft:`2px solid ${T.border}`,overflowY:"auto",padding:"20px 16px",flexShrink:0}}>
+        <div style={{width:isMobile?"100%":268,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?"16px 12px":"20px 16px",flexShrink:0}}>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS DASHBOARD</div>
           {FM_STAT_KEYS.map(k=>{
             const m=FM_STAT_META[k];
@@ -2178,13 +2180,15 @@ function AuthModal({onClose, onAuth}){
 /* ═══════════════════════════════════════════════════════════════════
    XP TOAST — shown after completing a case
 ═══════════════════════════════════════════════════════════════════ */
-function XPToast({xp, rank, prevRank, onDone}){
+function XPToast({xp, rank, prevRank, onDone, isRepeat, improvement}){
   useEffect(()=>{ const t=setTimeout(onDone, 4000); return()=>clearTimeout(t); },[]);
   const promoted = rank!==prevRank;
   return(
     <div style={{position:"fixed",bottom:28,right:28,background:T.surf,border:`2px solid ${T.gold}`,padding:"18px 22px",zIndex:500,animation:"fadeUp .3s both",minWidth:240}}>
-      <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:6}}>▸ XP EARNED</div>
+      <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:6}}>{isRepeat?"▸ REPEAT BONUS":"▸ XP EARNED"}</div>
       <div style={{fontFamily:T.serif,fontSize:28,color:T.gold,fontWeight:900,lineHeight:1}}>+{xp} XP</div>
+      {isRepeat&&improvement>0&&<div style={{fontFamily:T.mono,fontSize:9,color:T.green,marginTop:4,letterSpacing:1}}>↑ +{Math.round(improvement)}% improvement bonus</div>}
+      {isRepeat&&!improvement&&<div style={{fontFamily:T.mono,fontSize:9,color:T.dim,marginTop:4,letterSpacing:1}}>guaranteed repeat XP</div>}
       {promoted&&<div style={{fontFamily:T.mono,fontSize:10,color:T.green,marginTop:6,letterSpacing:2}}>★ RANK UP → {rank}</div>}
     </div>
   );
@@ -2354,10 +2358,17 @@ export default function App(){
     if(!user||!token) return;
     const fullReward = XP_REWARD[diff]||80;
     const attempt = normalizeAttemptScore(scoreData);
+    const currentPct = (attempt.score/attempt.maxScore)*100;
 
     try{
-      const currentPct = (attempt.score/attempt.maxScore)*100;
-      // Difficulty-weighted XP by score band: consistent across attempts.
+      // Check for previous attempts on this case
+      const prevAttempts = attempts.filter(a=>a.case_id===caseId);
+      const bestPrevScore = prevAttempts.length>0
+        ? Math.max(...prevAttempts.map(a=>(Number(a.score)||0)/(Number(a.max_score)||1)*100))
+        : 0;
+      const isRepeat = prevAttempts.length>0;
+
+      // Score-based multiplier for first attempt
       const xpMultiplier =
         currentPct>=95 ? 1 :
         currentPct>=85 ? 0.85 :
@@ -2365,11 +2376,22 @@ export default function App(){
         currentPct>=55 ? 0.55 :
         currentPct>=40 ? 0.4 :
         currentPct>0 ? 0.25 : 0;
-      const gained = Math.round(fullReward * xpMultiplier);
+
+      // Base XP from score performance
+      let gained = Math.round(fullReward * xpMultiplier);
+
+      // Repeat: guaranteed minimum XP (25% of full reward) + improvement bonus
+      if(isRepeat){
+        const guaranteedXP = Math.round(fullReward * 0.25); // 25% minimum on repeats
+        const improvement = Math.max(0, currentPct - bestPrevScore);
+        // Improvement bonus: up to extra 50% of full reward for 100% improvement
+        const improvementBonus = Math.round(fullReward * Math.min(0.5, improvement/200));
+        gained = Math.max(guaranteedXP, gained) + improvementBonus;
+      }
+
       const completedCount = (user.cases_completed||0)+1;
 
-      // Log attempt (always), even when no XP is gained
-      // Log attempt
+      // Log attempt (always)
       await supabase.insert("user_attempts",{
         user_id: user.id,
         case_id: caseId,
@@ -2379,46 +2401,46 @@ export default function App(){
         completed_at: new Date().toISOString(),
       }, token);
 
-      if(gained>0){
-        const newXp  = (user.xp||0) + gained;
-        const prevRank = xpToRank(user.xp||0);
-        const newRank  = xpToRank(newXp);
-        const updated  = {
-          ...user,
-          xp:newXp,
-          rank:newRank,
-          cases_completed:completedCount,
-          xp_gained_today:(user.xp_gained_today||0)+gained
-        };
+      // Refresh attempts after logging
+      fetchUserAttempts();
 
-        // Optimistic update
-        setUser(updated);
-        localStorage.setItem("ca_user", JSON.stringify(updated));
-        setXpToast({ xp:gained, rank:newRank, prevRank });
+      // Always award XP (minimum 10 XP even for 0% scores)
+      gained = Math.max(10, gained);
 
-        await supabase.patch("profiles",
-          { xp:newXp, rank:newRank, cases_completed:updated.cases_completed, xp_gained_today:updated.xp_gained_today },
-          { id:user.id }, token
-        );
+      const newXp  = (user.xp||0) + gained;
+      const prevRank = xpToRank(user.xp||0);
+      const newRank  = xpToRank(newXp);
+      const updated  = {
+        ...user,
+        xp:newXp,
+        rank:newRank,
+        cases_completed:completedCount,
+        xp_gained_today:(user.xp_gained_today||0)+gained
+      };
 
-        await supabase.insert("activity_feed",{
-          username: user.username,
-          action_text: `completed ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}`,
-          type: "score",
-          created_at: new Date().toISOString(),
-          time_ago: "just now",
-        }, token).catch(()=>{});
+      // Optimistic update
+      setUser(updated);
+      localStorage.setItem("ca_user", JSON.stringify(updated));
+      setXpToast({ xp:gained, rank:newRank, prevRank, isRepeat, improvement: isRepeat ? Math.max(0, currentPct - bestPrevScore) : 0 });
 
-        fetchLeaderboard();
-      }else{
-        const updated = { ...user, cases_completed:completedCount };
-        setUser(updated);
-        localStorage.setItem("ca_user", JSON.stringify(updated));
-        await supabase.patch("profiles",
-          { cases_completed:completedCount },
-          { id:user.id }, token
-        );
-      }
+      await supabase.patch("profiles",
+        { xp:newXp, rank:newRank, cases_completed:updated.cases_completed, xp_gained_today:updated.xp_gained_today },
+        { id:user.id }, token
+      );
+
+      const actionText = isRepeat
+        ? `repeated ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}${Math.max(0, currentPct - bestPrevScore)>0 ? ' · ↑'+Math.round(Math.max(0, currentPct - bestPrevScore))+'%' : ''}`
+        : `completed ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}`;
+
+      await supabase.insert("activity_feed",{
+        username: user.username,
+        action_text: actionText,
+        type: "score",
+        created_at: new Date().toISOString(),
+        time_ago: "just now",
+      }, token).catch(()=>{});
+
+      fetchLeaderboard();
     }catch(e){ console.warn("XP save failed:", e.message); }
   }
 
