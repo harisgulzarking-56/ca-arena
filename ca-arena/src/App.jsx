@@ -930,15 +930,26 @@ function FreshMartSim({onBack,onComplete}){
 ═══════════════════════════════════════════════════════════════════ */
 function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
   const [hov,setHov]=useState(null);
+  const [isMobile,setIsMobile]=useState(()=>{
+    if(typeof window==="undefined") return false;
+    return window.innerWidth<=900;
+  });
+  useEffect(()=>{
+    if(typeof window==="undefined") return;
+    const onResize=()=>setIsMobile(window.innerWidth<=900);
+    onResize();
+    window.addEventListener("resize",onResize);
+    return ()=>window.removeEventListener("resize",onResize);
+  },[]);
   const list = caseList||CASE_LIST_FALLBACK;
   const modes=[
     {id:"cases",icon:"⬡",code:"01",color:T.gold,title:"Case Simulation",sub:"Dissect. Decide. Score.",desc:"Timed case rooms anchored to real company data. Choose Business Scenario or Financial Statement. Earn XP, rank globally, share results.",badge:"MOST PLAYED",active:list.length||5},
     {id:"boardroom",icon:"◈",code:"02",color:T.blue,title:"The Boardroom",sub:"Defend your numbers. Live.",desc:"Present your financial analysis to a live audience. Gallery watches, reacts, and votes on every decision in real time.",badge:"LIVE NOW",active:218},
   ];
   return(
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:isMobile?"visible":"hidden"}}>
       <TickerBar user={user}/>
-      <div style={{position:"relative",padding:"48px 32px 32px",overflow:"hidden",borderBottom:`2px solid ${T.border}`,flexShrink:0}}>
+      <div style={{position:"relative",padding:isMobile?"28px 16px 20px":"48px 32px 32px",overflow:"hidden",borderBottom:`2px solid ${T.border}`,flexShrink:0}}>
         <HexBg/>
         <div style={{position:"relative",animation:"fadeUp .5s both"}}>
           <div style={{fontFamily:T.mono,fontSize:9,color:T.gold,letterSpacing:4,marginBottom:12}}>▸ COGNITIVE SPORTS ARENA FOR CA STUDENTS</div>
@@ -946,14 +957,14 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
           <p style={{fontFamily:T.sans,fontSize:13.5,color:T.dim,lineHeight:1.8,maxWidth:460}}>Real companies. Real decisions. Real scoring. Pick your mode, dissect the business, earn your rank.</p>
         </div>
       </div>
-      <div style={{flex:1,display:"flex",gap:0,overflow:"hidden"}}>
-        <div style={{flex:1,overflowY:"auto",padding:"24px 28px",display:"flex",flexDirection:"column",gap:20}}>
+      <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",gap:0,overflow:isMobile?"visible":"hidden"}}>
+        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"24px 28px",display:"flex",flexDirection:"column",gap:20}}>
           <XPBar user={user}/>
           <div>
             <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>GAME MODES</div>
             <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
               {modes.map(m=>(
-                <div key={m.id} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} onClick={()=>onNav(m.id)} style={{flex:1,minWidth:230,background:hov===m.id?"#0e0e12":T.surf,border:`2px solid ${hov===m.id?m.color:T.border}`,padding:"24px 22px",cursor:"pointer",transition:"all .2s",position:"relative",boxShadow:hov===m.id?`0 0 40px ${m.color}12`:"none"}}>
+                <div key={m.id} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} onClick={()=>onNav(m.id)} style={{flex:1,minWidth:isMobile?"100%":230,background:hov===m.id?"#0e0e12":T.surf,border:`2px solid ${hov===m.id?m.color:T.border}`,padding:"24px 22px",cursor:"pointer",transition:"all .2s",position:"relative",boxShadow:hov===m.id?`0 0 40px ${m.color}12`:"none"}}>
                   <div style={{position:"absolute",top:12,right:12,background:m.color,color:"#000",fontFamily:T.mono,fontSize:8,fontWeight:800,padding:"2px 8px",letterSpacing:2}}>{m.badge}</div>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><span style={{fontSize:24,color:m.color}}>{m.icon}</span><span style={{fontFamily:T.mono,fontSize:9,color:m.color,letterSpacing:3}}>{m.code}</span></div>
                   <h3 style={{fontFamily:T.serif,fontSize:20,color:T.txt,marginBottom:4,fontWeight:700}}>{m.title}</h3>
@@ -982,6 +993,18 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontFamily:T.sans,fontSize:13,color:"#ddd",fontWeight:600,marginBottom:2}}>{c.label}{c.hasSim&&<span style={{marginLeft:8,fontFamily:T.mono,fontSize:7,color:T.blue,border:`1px solid ${T.blue}44`,padding:"1px 6px",letterSpacing:1}}>SIM</span>}</div>
                     <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{c.sub}</div>
+                    {c.hasSim&&(
+                      <button
+                        onClick={(e)=>{
+                          e.stopPropagation();
+                          if(canAccessDifficulty(user?.xp||0, c.diff)) onNav(`sim-${c.id}`);
+                        }}
+                        disabled={!canAccessDifficulty(user?.xp||0, c.diff)}
+                        style={{marginTop:8,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:8,padding:"5px 9px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",letterSpacing:1.2,opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.45}}
+                      >
+                        OPEN LIVE SIM
+                      </button>
+                    )}
                     {!canAccessDifficulty(user?.xp||0, c.diff)&&(
                       <div style={{fontFamily:T.mono,fontSize:8,color:T.red,marginTop:5,letterSpacing:1}}>
                         Unlocks at Lv {DIFF_UNLOCK_LEVEL[c.diff]}
@@ -998,7 +1021,7 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
             </div>
           </div>
         </div>
-        <div style={{width:276,borderLeft:`2px solid ${T.border}`,overflowY:"auto",padding:18,display:"flex",flexDirection:"column",gap:14,flexShrink:0}}>
+        <div style={{width:isMobile?"100%":276,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?12:18,display:"flex",flexDirection:"column",gap:14,flexShrink:0}}>
           <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
           <FeedPanel feed={feed}/>
         </div>
@@ -1014,17 +1037,28 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
   const [filter,setFilter]=useState("all");
   const [diffFilter,setDiffFilter]=useState("all");
   const [hov,setHov]=useState(null);
+  const [isMobile,setIsMobile]=useState(()=>{
+    if(typeof window==="undefined") return false;
+    return window.innerWidth<=900;
+  });
+  useEffect(()=>{
+    if(typeof window==="undefined") return;
+    const onResize=()=>setIsMobile(window.innerWidth<=900);
+    onResize();
+    window.addEventListener("resize",onResize);
+    return ()=>window.removeEventListener("resize",onResize);
+  },[]);
   const list = caseList||CASE_LIST_FALLBACK;
   const filtered=list.filter(c=>(filter==="all"||c.type===filter) && (diffFilter==="all"||c.diff===diffFilter));
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
       <TopBar label="CASE SIMULATION" sub="SELECT CASE" onBack={onBack}/>
-      <div style={{flex:1,display:"flex",overflow:"hidden"}}>
-        <div style={{flex:1,overflowY:"auto",padding:"32px 28px"}}>
+      <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden"}}>
+        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"32px 28px"}}>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:14}}>CHOOSE FORMAT</div>
           <div style={{display:"flex",gap:12,marginBottom:32,flexWrap:"wrap"}}>
             {[{id:"scenario",icon:"◉",color:T.gold,title:"Business Scenario",sub:"Strategic Judgement · Advisory",desc:"Narrative brief with key data. Analyse the situation, make recommendations, defend logic. Some cases include live branching simulations."},{id:"financial",icon:"▦",color:T.blue,title:"Financial Statement",sub:"Technical Precision · IFRS",desc:"Actual financials — P&L, Balance Sheet, Cash Flow, Ratio Analysis. Calculate ratios, identify anomalies, recommend capital actions."}].map(m=>(
-              <div key={m.id} onClick={()=>setFilter(m.id)} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} style={{flex:1,minWidth:220,background:filter===m.id?`${m.color}0a`:T.surf,border:`2px solid ${filter===m.id||hov===m.id?m.color:T.border}`,padding:"20px 18px",cursor:"pointer",transition:"all .2s"}}>
+              <div key={m.id} onClick={()=>setFilter(m.id)} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} style={{flex:1,minWidth:isMobile?"100%":220,background:filter===m.id?`${m.color}0a`:T.surf,border:`2px solid ${filter===m.id||hov===m.id?m.color:T.border}`,padding:"20px 18px",cursor:"pointer",transition:"all .2s"}}>
                 <div style={{fontSize:22,color:m.color,marginBottom:10}}>{m.icon}</div>
                 <div style={{fontFamily:T.serif,fontSize:17,color:T.txt,marginBottom:4,fontWeight:700}}>{m.title}</div>
                 <div style={{fontFamily:T.mono,fontSize:8,color:m.color,letterSpacing:2,marginBottom:8}}>{m.sub}</div>
@@ -1110,7 +1144,7 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
             ))}
           </div>
         </div>
-        <div style={{width:272,borderLeft:`2px solid ${T.border}`,overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12,flexShrink:0}}>
+        <div style={{width:isMobile?"100%":272,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?12:16,display:"flex",flexDirection:"column",gap:12,flexShrink:0}}>
           <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
           <FeedPanel feed={feed}/>
         </div>
