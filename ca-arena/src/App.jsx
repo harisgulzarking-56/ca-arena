@@ -445,22 +445,25 @@ const determineEnding = (state, week) => {
     };
   }
   
-  if (recoveryScore >= 75 && state.cash_on_hand > 1000000) {
-    return {
-      type: "perfect",
-      title: "Optimal Recovery", 
-      text: "FreshMart recovered strongly with sustainable operations.",
-      score: recoveryScore
-    };
-  }
-  
-  if (recoveryScore >= 50) {
-    return {
-      type: "good",
-      title: "Business Stabilized",
-      text: "FreshMart survived but remains fragile.",
-      score: recoveryScore
-    };
+  // Only allow recovery endings after at least 4 weeks (minimum time for meaningful intervention)
+  if (week >= 4) {
+    if (recoveryScore >= 75 && state.cash_on_hand > 1500000 && state.emergency_days_left > 30) {
+      return {
+        type: "perfect",
+        title: "Optimal Recovery", 
+        text: "FreshMart recovered strongly with sustainable operations.",
+        score: recoveryScore
+      };
+    }
+    
+    if (recoveryScore >= 50 && state.cash_on_hand > 800000 && state.emergency_days_left > 14) {
+      return {
+        type: "good",
+        title: "Business Stabilized",
+        text: "FreshMart survived but remains fragile.",
+        score: recoveryScore
+      };
+    }
   }
   
   if (week >= 20) {
@@ -1116,29 +1119,34 @@ function FreshMartSim({onBack,onComplete}){
   function checkEligibility(conditions, currentState) {
     if (!conditions || conditions.length === 0) return true;
     
-    let result = true;
-    let i = 0;
+    // Handle OR groups
+    const orGroups = [];
+    let currentGroup = [];
     
-    while (i < conditions.length) {
-      const condition = conditions[i];
-      
+    for (const condition of conditions) {
       if (condition.operator === "or") {
-        // OR operator - evaluate next condition
-        i++;
-        if (i < conditions.length) {
-          const nextResult = checkSingleCondition(conditions[i], currentState);
-          result = result || nextResult;
+        if (currentGroup.length > 0) {
+          orGroups.push(currentGroup);
+          currentGroup = [];
         }
-      } else if (condition.var) {
-        // Regular condition
-        const conditionResult = checkSingleCondition(condition, currentState);
-        result = result && conditionResult;
+      } else {
+        currentGroup.push(condition);
       }
-      
-      i++;
     }
     
-    return result;
+    if (currentGroup.length > 0) {
+      orGroups.push(currentGroup);
+    }
+    
+    // If there are OR groups, at least one group must be fully satisfied
+    if (orGroups.length > 1) {
+      return orGroups.some(group => 
+        group.every(condition => checkSingleCondition(condition, currentState))
+      );
+    }
+    
+    // Single group - all conditions must be satisfied
+    return orGroups[0].every(condition => checkSingleCondition(condition, currentState));
   }
   
   function checkSingleCondition(condition, currentState) {
