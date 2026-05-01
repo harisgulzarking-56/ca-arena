@@ -66,7 +66,7 @@ input:focus,button:focus{outline:none;}
 ═══════════════════════════════════════════════════════════════════ */
 
 const RENT = 400000;
-const WEEKLY_BURN = 100000; // Approximate weekly cash burn
+const MONTHLY_BURN = 900000; // Approximate monthly cash burn
 
 // Scenario-driven FreshMart Simulation
 const FM_INITIAL_STATE = {
@@ -755,7 +755,7 @@ const calculateRecoveryScore = (state) => {
 };
 
 // Determine ending based on state
-const determineEnding = (state, week) => {
+const determineEnding = (state, month) => {
   const recoveryScore = calculateRecoveryScore(state);
   
   if (state.cash_on_hand <= 0) {
@@ -776,8 +776,8 @@ const determineEnding = (state, week) => {
     };
   }
   
-  // Only allow recovery endings after at least 4 weeks (minimum time for meaningful intervention)
-  if (week >= 4) {
+  // Only allow recovery endings after at least 2 months (minimum time for meaningful intervention)
+  if (month >= 2) {
     if (recoveryScore >= 75 && state.cash_on_hand > 1500000) {
       return {
         type: "perfect",
@@ -836,245 +836,7 @@ function statHealth(key,v){
   if(key==="supplier_relations") return v>=0.7?"good":v>=0.5?"warn":"bad";
   return "good";
 }
-const HC={good:T.green,warn:T.gold,bad:T.red,neutral:T.blue};
 
-const Nodes = {
-
-  /* ══ MONTH 1 ══════════════════════════════════════════════════ */
-  start:{
-    id:"start", month:1, title:"Day 1 in the Crisis",
-    situation:`You walk into FreshMart Monday morning. The cashier who stole PKR 5 million is gone. Liquid cash: PKR 2M — barely 5 months of rent. Shelves hold 400+ products, many unmoved for weeks. Monthly sales: PKR 280,000 — not covering the PKR 400,000 rent. You have one month before the first cash shortfall. What's your first move?`,
-    choices:[
-      {id:"a",label:"Raise prices across the board",desc:"Margins are thin — charge 15–20% more on everything.",impact:{monthlySales:-90000,customerCount:-42,ownerStress:+8,staffMorale:-5},next:"raise_prices"},
-      {id:"b",label:"Launch a clearance sale",desc:"Slash slow-moving items 30–40%. Convert inventory to cash fast.",impact:{cash:+650000,monthlySales:+180000,inventory:-3200000,customerCount:+35,staffMorale:+10,ownerStress:-12},next:"clearance"},
-      {id:"c",label:"Take out a PKR 5M business loan",desc:"Bank financing to cover operations and restock variety.",impact:{cash:+5000000,inventory:+2000000,ownerStress:+15,staffMorale:+5},next:"loan",debtAdded:5000000},
-      {id:"d",label:"Wait — let word of mouth build",desc:"Prime location. Customers will find you. Give it time.",impact:{cash:-400000,monthlySales:-20000,customerCount:-8,staffMorale:-12,ownerStress:+18},next:"wait"},
-    ],
-  },
-
-  /* ══ RAISE PRICES PATH ════════════════════════════════════════ */
-  raise_prices:{
-    id:"raise_prices", month:2, title:"The Price Hike Backfires",
-    narrative:`You raised prices 18% across the board. Within two weeks, regulars noticed. Three customers told you directly: "D-Mart two blocks away is cheaper." Footfall dropped sharply. Sales fell to PKR 190,000 — worse than before. Staff morale fell watching empty aisles.`,
-    situation:`Customer trust burned, sales worsened, inventory unchanged. ~3 months of cash left at this burn rate. New direction needed urgently.`,
-    choices:[
-      {id:"a",label:"Reverse prices + run a 'Sorry Sale'",desc:"Own the mistake publicly. Win customers back with a promotional event.",impact:{monthlySales:+120000,customerCount:+38,ownerStress:-8,staffMorale:+8,cash:-80000},next:"sorry_sale"},
-      {id:"b",label:"Double down — target premium customers",desc:"The location IS premium. Refocus on quality products and higher-income shoppers.",impact:{monthlySales:-40000,customerCount:-30,inventory:-500000,ownerStress:+20,staffMorale:-15},next:"premium_fail"},
-      {id:"c",label:"Cut below market — flood store with customers first",desc:"Aggressive below-cost pricing to build habits, profit later.",impact:{monthlySales:+160000,customerCount:+60,cash:-300000,inventory:-1500000,staffMorale:+5,ownerStress:+5},next:"below_market"},
-    ],
-  },
-  sorry_sale:{
-    id:"sorry_sale", month:3, title:"Customers Forgive — Now Fix the Real Problem",
-    narrative:`The Sorry Sale worked socially — footfall partially recovered. But the issue was never prices. PKR 22M is still frozen in slow stock while PKR 400K rent drains monthly. Sales improved but remain below breakeven.`,
-    situation:`Customer relationship stabilised. The inventory constraint stares you down. 400 slow-moving SKUs. What do you do?`,
-    choices:[
-      {id:"a",label:"Apply Pareto — cut to 80 fast-moving SKUs, liquidate the rest",desc:"Identify top sellers, liquidate everything else, restock only what sells fast.",impact:{cash:+3800000,inventory:-9000000,monthlySales:+220000,customerCount:+20,staffMorale:+12,ownerStress:-25},next:"end_recovered"},
-      {id:"b",label:"Negotiate returns with suppliers first",desc:"Call suppliers. Ask for credit notes or returns on slow-moving items.",impact:{cash:+1200000,inventory:-4000000,ownerStress:-10,staffMorale:+5},next:"end_recovered_slow"},
-    ],
-  },
-  premium_fail:{
-    id:"premium_fail", month:3, title:"The Premium Pivot Collapses", isWarning:true,
-    narrative:`You rebranded mentally as 'premium' but made no physical changes. Premium shoppers go to actual delis — not a mart with stock in distributor packaging. Sales fell to PKR 150,000. You missed rent for the first time. The landlord called. Staff unpaid on time.`,
-    situation:`Critical cash crisis. Rent arrears: PKR 250,000. Staff morale collapsing. ~6 weeks before the landlord takes action. You need cash NOW.`,
-    choices:[
-      {id:"a",label:"Emergency liquidation — everything 50% off",desc:"Survival mode. Sell everything at deep discount to stop the bleeding now.",impact:{cash:+2800000,inventory:-8000000,monthlySales:+300000,customerCount:+80,rentArrears:-250000,ownerStress:-20,staffMorale:+15},next:"end_emergency_survived"},
-      {id:"b",label:"Approach landlord — defer rent 60 days",desc:"Negotiate a payment plan. Buy restructuring time.",impact:{cash:+400000,ownerStress:+15,staffMorale:-5},next:"end_landlord_path"},
-    ],
-  },
-  below_market:{
-    id:"below_market", month:3, title:"Footfall Up — Bleeding Cash",
-    narrative:`Below-market pricing worked for footfall — the store is visibly busier. But you're selling below cost. Every transaction loses money at gross margin. Cash is draining fast — PKR 440,000 in sales but spending more than that in COGS and rent combined.`,
-    situation:`Proved the location works. But below-cost pricing is unsustainable. Fix price point and inventory mix now or the cash runs out.`,
-    choices:[
-      {id:"a",label:"Normalize to market prices — keep the customer base",desc:"Gradually bring prices to competitive market rates while habit is built.",impact:{monthlySales:-60000,customerCount:-15,cash:+150000,inventory:-1000000,ownerStress:-10},next:"end_normalize_then_pareto"},
-      {id:"b",label:"Apply Pareto — drop losers, focus on profitable SKUs",desc:"Drop 300 slow products. Keep 80–100 fast-moving ones at healthy margins.",impact:{cash:+2200000,inventory:-7000000,monthlySales:+80000,staffMorale:+12,ownerStress:-18},next:"end_recovered"},
-    ],
-  },
-
-  /* ══ CLEARANCE PATH ═══════════════════════════════════════════ */
-  clearance:{
-    id:"clearance", month:2, title:"Cash Moving — Inventory Still Deep",
-    narrative:`The clearance created real buzz. You converted PKR 3.2M inventory into PKR 650K cash — value recovery wasn't great but the cash is liquid now. Monthly sales jumped. But PKR 18.8M in slow stock remains and the underlying model isn't fixed yet.`,
-    situation:`Good first move. Cash breathing room exists. Now — what do you do with the remaining inventory and the broken model?`,
-    choices:[
-      {id:"a",label:"Restock more variety — fill the gaps",desc:"You've freed shelf space. New products might be what customers actually wanted.",impact:{cash:-600000,inventory:+2500000,monthlySales:+30000,customerCount:+10,ownerStress:+10},next:"restock_mistake"},
-      {id:"b",label:"Apply Pareto — restock only the 20 best sellers",desc:"Data shows which products moved fastest. Go deep on those. Stop the long tail.",impact:{cash:-350000,inventory:-6000000,monthlySales:+180000,customerCount:+28,staffMorale:+15,ownerStress:-20},next:"end_recovered"},
-      {id:"c",label:"Install a POS system first — get real data",desc:"Prevent another fraud. Know exactly what sells. Cost: PKR 80,000.",impact:{cash:-80000,staffMorale:+8,ownerStress:-15},next:"pos_install"},
-    ],
-  },
-  restock_mistake:{
-    id:"restock_mistake", month:3, title:"Same Mistake, Second Time", isWarning:true,
-    narrative:`You restocked variety. Three weeks later, most new products haven't moved either. You've recreated the original problem — capital trapped in slow inventory — but with less cash. The clearance bought time that you've spent digging the same hole.`,
-    situation:`The inventory problem is structural. Variety isn't the answer — velocity is. Make the hard call now or face closure.`,
-    choices:[
-      {id:"a",label:"Apply Pareto — finally cut to fast movers only",desc:"Late but not too late. Liquidate everything, rebuild around velocity.",impact:{cash:+1800000,inventory:-7500000,monthlySales:+150000,customerCount:+15,ownerStress:-15},next:"end_recovered_late"},
-      {id:"b",                                        // ← ADD THIS
-      label:"Try a different variety — maybe the wrong products were chosen",
-      desc:"You still believe the answer is finding the RIGHT products. Order a new range.",
-      impact:{cash:-900000,inventory:+3000000,monthlySales:+20000,ownerStress:+25,staffMorale:-10},
-      next:"end_closure",                            // ← new bad ending
-      },
-    ],
-  },
-  pos_install:{
-    id:"pos_install", month:3, title:"Data Changes Everything",
-    narrative:`POS went live. Within 2 weeks: your top 10 SKUs represent 67% of revenue. 380 products haven't sold a single unit in 3 weeks. The data makes the next decision obvious. Cash reconciliation is automatic — staff accountability built in.`,
-    situation:`The data told you exactly what to do. Act on it.`,
-    choices:[
-      {id:"a",label:"Execute Pareto immediately — data-backed this time",desc:"Liquidate 320 dead-weight SKUs. Restock winners 3× deeper.",impact:{cash:+2600000,inventory:-8500000,monthlySales:+240000,customerCount:+30,ownerStress:-22,staffMorale:+14},next:"end_recovered"},
-    ],
-  },
-
-  /* ══ LOAN PATH ════════════════════════════════════════════════ */
-  loan:{
-    id:"loan", month:2, title:"Cash in Hand — New Monster Created", isWarning:true,
-    narrative:`Bank approved PKR 5M at 22% p.a. Monthly interest: ~PKR 91,000. Fixed obligations now PKR 491,000/month against PKR 280,000 in sales. The loan didn't fix inventory, sales, or controls. It added a ticking clock on top of an already burning house.`,
-    situation:`Cash feels comfortable but you've added PKR 91K/month to a business that couldn't cover existing fixed costs. Make this capital work immediately or this loan becomes the final problem.`,
-    choices:[
-      {id:"a",label:"Use loan to aggressively market the store",desc:"Drive footfall with leaflets, social media, and deals.",impact:{cash:-200000,monthlySales:+120000,customerCount:+55,ownerStress:-5},next:"marketing_push"},
-      {id:"b",label:"Use loan to restructure — liquidate and restock right",desc:"Treat it as restructuring capital. Fix the model, not just the cash gap.",impact:{cash:-400000,inventory:-8000000,monthlySales:+200000,customerCount:+30,staffMorale:+10,ownerStress:-10},next:"loan_restructure"},
-      {id:"c",label:"Restock more variety with the loan",desc:"Wide variety was the original vision. More products, more customers.",impact:{cash:-3000000,inventory:+5000000,monthlySales:+40000,customerCount:+12,ownerStress:+12},next:"loan_disaster"},
-    ],
-  },
-  loan_disaster:{
-    id:"loan_disaster", month:3, title:"PKR 5M Loan + More Variety = Bigger Problem",
-    narrative:`You now have PKR 27M in inventory across 500+ SKUs. Monthly obligations: PKR 491,000. Monthly sales: PKR 320,000. The gap grows each month. Interest compounds. A supplier calls about a delayed payment. Staff sense the panic.`,
-    situation:`Classic entrepreneur trap: borrowing to scale a broken model. Each month adds more interest than the business earns above breakeven. There is no soft landing from here.`,
-    isEnding:true, endingType:"bad", endingTitle:"The Debt Spiral",
-    endingText:`By Month 5, FreshMart owes PKR 5M principal + PKR 455,000 accumulated interest. Monthly cash burn exceeds revenue by PKR 171,000. Forced liquidation at 40 paisa on the rupee.\n\nTotal loss beyond the original fraud: ~PKR 8.2 million.\n\nWhat went wrong: A loan is an amplifier — it makes good strategies better and bad strategies catastrophically worse. You needed to fix velocity before adding capital. Instead you added capital before finding velocity.`,
-    keyInsights:["Never borrow to scale a broken model","Working capital velocity must come before debt capital","Variety does not create velocity — it destroys it","Sunk cost fallacy: doubling down costs more than admitting the mistake","The loan revealed the constraint — it didn't create it"],
-  },
-  loan_restructure:{
-    id:"loan_restructure", month:3, title:"Loan Used Wisely — Model Shifts",
-    narrative:`Using the loan for structured liquidation and restock was the right call. Cleared PKR 8M in slow inventory (recovered PKR 2.1M), then restocked 40 fastest-moving SKUs in depth. Sales jumped to PKR 480,000 — above breakeven for the first time. Interest cost is manageable at this sales level.`,
-    situation:`You've crossed breakeven. The loan must now be paid down. What's the priority with the surplus?`,
-    choices:[
-      {id:"a",label:"Channel surplus directly to loan repayment",desc:"At 22% interest, early repayment has guaranteed ROI. Get out of debt fast.",impact:{cash:-300000,ownerStress:-20,staffMorale:+8},next:"end_optimal"},
-      {id:"b",label:"Reinvest surplus into expanding the fast-moving category",desc:"You've found what works. Scale it — more depth on winning SKUs.",impact:{cash:-250000,monthlySales:+120000,inventory:+1500000,customerCount:+25},next:"end_recovered"},
-    ],
-  },
-  marketing_push:{
-    id:"marketing_push", month:3, title:"Footfall Up — Inventory Still the Barrier",
-    narrative:`Marketing worked — daily customers jumped past 200. But they browse 400 products and leave with PKR 300 of essentials. The wide inventory looks impressive but doesn't convert. You're paying PKR 91K/month in interest and generated PKR 120K more in sales — still not enough. The inventory mix is the real barrier.`,
-    situation:`Marketing proved the location works. Now fix what customers see when they arrive.`,
-    choices:[
-      {id:"a",label:"Restructure inventory around what customers actually bought",desc:"Sales data shows your top 30 items. Double down on those. Remove the rest.",impact:{cash:+1500000,inventory:-6000000,monthlySales:+200000,customerCount:+15,ownerStress:-15},next:"end_recovered"},
-    ],
-  },
-
-  /* ══ WAIT PATH ════════════════════════════════════════════════ */
-  wait:{
-    id:"wait", month:2, title:"Waiting Cost You a Month You Couldn't Afford", isWarning:true,
-    narrative:`Nothing changed except your cash worsened. Spent PKR 400K on rent, PKR 180K on utilities and salaries, generated PKR 260K in sales. Net burn: PKR 320,000. Inventory one month older. Staff morale dropped. A supplier called about payment terms.`,
-    situation:`Cash now PKR 1.68M. At this burn rate: ~4 months before you cannot pay rent. Urgency is now critical. Every week of inaction is expensive.`,
-    choices:[
-      {id:"a",label:"Emergency clearance — 35% off, generate cash NOW",desc:"Reactive but better late than never. Create urgency with time-limited promotions.",impact:{cash:+480000,inventory:-2800000,monthlySales:+200000,customerCount:+40,staffMorale:+8,ownerStress:-10},next:"clearance"},
-      {id:"b",
-        label:"Cut costs AND keep waiting — sales will pick up",
-        desc:"Reduce expenses and give it one more month. The location is too good to fail.",
-        impact:{cash:-700000,monthlySales:-20000,customerCount:-12,staffMorale:-22,ownerStress:+28},
-        next:"cost_cut",
-      },
-    ],
-  },
-  cost_cut:{
-    id:"cost_cut", month:3, title:"Cutting Costs Without Fixing Revenue — Slow Death",
-    isWarning:true,
-    narrative:`You cut staff hours and electricity. Saved PKR 120K/month. But the dimmer, quieter store feels unwelcoming — sales fell to PKR 230,000. Net burn still PKR 270K/month. You extended the runway by a few weeks but addressed neither root cause.`,
-    situation:`Cost cutting cannot fix a revenue problem. You've burned another month. Fundamental intervention or closure — those are the only two paths left.`,
-    choices:[
-      {
-        id:"a",
-        label:"Full Pareto restructure  — liquidate everything and rebuild from scratch",
-        desc:"Accept the inventory write-down. Rebuild lean, velocity-focused, with controls.",
-        impact:{cash:+2100000,inventory:-8000000,monthlySales:+220000,customerCount:+35,ownerStress:-30,staffMorale:+18},
-        next:"end_recovered_late",
-      },
-      {
-        id:"b",
-        label:"Keep cutting costs — wait for peak season to save the business",
-        desc:"There's a wedding season coming. If sales spike naturally the business survives without a painful restructure.",
-        impact:{cash:-800000,monthlySales:-30000,customerCount:-20,staffMorale:-25,ownerStress:+30},
-        next:"end_closure",
-      },
-    ],
-  },
-
-  /* ══ ENDINGS — all branches terminate here ════════════════════ */
-
-  end_optimal:{
-    id:"end_optimal", month:4, title:"FreshMart: Diagnosed, Fixed, Debt-Free",
-    narrative:`You channelled every surplus rupee into loan repayment — PKR 300K/month of principal on top of running the lean restocked model. The loan cleared in under 5 months. Interest cost disappeared. FreshMart now runs profitably, debt-free, with PKR 280,000/month in net profit and a 3-month cash reserve built up. The fraud is a painful memory but the POS controls mean it cannot happen again.`,
-    isEnding:true, endingType:"perfect", endingTitle:"Optimal Recovery",
-    endingText:`Final position: PKR 280K/month net profit · Zero debt · PKR 1.2M cash reserve.\n\nYou made the correct diagnosis (liquidity trap, not fraud), used capital correctly (restructure, not gap-fill), and maintained discipline (debt repayment). The fraud loss will be recovered organically in under 18 months.\n\nThis is the optimal path — found by understanding constraints, not symptoms.`,
-    keyInsights:["Root cause: liquidity trap from slow inventory — not the fraud","Loan as restructuring capital: valid only when the model is fixed first","Pareto principle: 20% of SKUs drove 80% of revenue","Debt discipline: 22% interest means every month of debt costs more than most employees","Controls: a PKR 80K POS system is cheaper than a PKR 5M embezzlement"],
-  },
-  
-  end_closure:{
-   id:"end_closure", month:3, title:"FreshMart Closes",
-   narrative:`Cash hit zero in the third week of month 3. The landlord padlocked
-              the shutters on Tuesday morning. Staff received a WhatsApp message
-              informing them not to come in. Suppliers are owed PKR 1.8M.
-              The owner is now personally liable for the outstanding rent.`,
-   isEnding:true, endingType:"bad", endingTitle:"Business Closure",
-   endingText:`Total loss: PKR ~PKR 9M (fraud + inventory write-off + outstanding obligations).\n\nWhat went wrong:\nThe business had a fixable problem — a liquidity trap from slow inventory. It was not terminal. But every month of wrong decisions (waiting, cost-cutting, variety restocking) consumed the cash buffer that would have funded a restructure.\n\nThe business didn't die because of the fraud. It died because the owner kept solving the wrong problem.\n\nThe fraud lost PKR 5M. The wrong decisions lost the remaining PKR 4M and the business itself.`,
-   keyInsights:[
-     "A fixable problem becomes unfixable when you run out of time to fix it",
-     "Cost-cutting extends the runway but does not change the destination",
-     "Variety is not a strategy — velocity is",
-     "Every month of wrong decisions consumes the capital needed for the right one",
-     "The sunk cost of the fraud was recoverable. The cost of inaction was not.",
-    ],
-  },
-
-  end_recovered:{
-    id:"end_recovered", month:4, title:"FreshMart Stabilised and Growing",
-    narrative:`The Pareto restructure worked. PKR 9M in slow inventory became PKR 3.8M in cash. Fast-moving SKUs restocked 3× deeper — customers find what they came for. Basket size increased. Sales crossed PKR 520,000. Monthly surplus: PKR 120,000. POS installed, controls running, FIR filed against the cashier. The business is structurally sound.`,
-    isEnding:true, endingType:"good", endingTitle:"Business Recovered",
-    endingText:`Monthly profit: ~PKR 120,000 and growing. Fraud loss recoverable in ~42 months organically.\n\nFive lessons from this case:\n① Liquidity > variety — cash velocity beats product range every time\n② Fixed costs demand velocity, not hope or patience\n③ Pareto applies to retail: 20% of SKUs drove 80% of revenue\n④ Controls prevent recurrence — a PKR 80K system vs a PKR 5M loss\n⑤ The fraud was a trigger, not the disease — the disease was the inventory model`,
-    keyInsights:["Liquidity trap: capital frozen in slow inventory, not lost in fraud","Pareto inventory restructure: velocity over variety","Fixed cost urgency: PKR 400K/month rent demands breakeven discipline","Internal controls: dual-authorisation + POS as fraud prevention","Sunk cost clarity: the fraud was a past loss, not the current constraint"],
-  },
-
-  end_recovered_slow:{
-    id:"end_recovered_slow", month:4, title:"Recovered — The Long Way Around",
-    narrative:`Supplier negotiations recovered PKR 1.2M — less than a clearance sale but with better supplier relationships preserved. Combined with a Pareto restock of top-velocity items, sales crossed breakeven. The path took an extra 3 weeks and cost PKR 800K in excess rent burn, but FreshMart is now operationally sound.`,
-    isEnding:true, endingType:"good", endingTitle:"Recovered via Negotiation",
-    endingText:`Monthly profit: ~PKR 80,000. Fraud loss recoverable in ~63 months at this rate.\n\nThe supplier negotiation path preserved relationships and avoided the reputational hit of a clearance sale — a legitimate trade-off. The delay cost money but the outcome is the same destination.\n\nKey distinction: clearance sales recover cash faster but at a discount. Supplier returns recover value at cost but take longer. Both beat holding slow stock.`,
-    keyInsights:["Supplier relationships have balance-sheet value beyond credit terms","Pareto principle: focus on velocity, not variety","Opportunity cost of delay: every week of inaction = PKR 100K+ in rent","Cash recovery speed vs. value recovery: a genuine strategic trade-off","Breakeven is not a destination — it is the minimum floor"],
-  },
-
-  end_recovered_late:{
-    id:"end_recovered_late", month:4, title:"Recovered — But Two Months Too Late",
-    narrative:`The Pareto restructure worked. Sales above breakeven. The business is structurally sound now. But you burned PKR 800K in extra rent during the delay — two months of inaction that cost real money. The right move applied late is still far better than the wrong move applied promptly. But the cost of hesitation is visible in the depleted cash balance.`,
-    isEnding:true, endingType:"good", endingTitle:"Recovered — With a Lesson About Time",
-    endingText:`Monthly profit: ~PKR 60,000. Fraud loss recoverable in ~84 months at this rate.\n\nThe delay in applying the correct solution cost PKR 800K in unnecessary fixed cost burn. Time is not neutral in a business with high fixed costs.\n\nLesson: every month of inaction in a high-fixed-cost business is an irreversible cash expenditure. The sooner you diagnose the constraint, the less it costs to fix it.`,
-    keyInsights:["Time is not neutral when fixed costs are high","The correct solution applied late still beats the wrong solution applied early","Cash burn during delay is permanent — you cannot recover it","Diagnosis speed is itself a financial skill","Fixed cost structures punish hesitation more than variable-cost businesses"],
-  },
-
-  end_emergency_survived:{
-    id:"end_emergency_survived", month:4, title:"Survived — At Great Cost",
-    narrative:`The emergency 50% sale flooded the store. Recovered PKR 2.8M cash across 10 days. Rent arrears cleared, staff paid. But you sold PKR 8M worth of inventory for PKR 2.8M — a 65% loss on those goods. The delay from the premium pivot cost enormously. Rebuilt on a lean velocity model, FreshMart now generates a small monthly surplus.`,
-    isEnding:true, endingType:"good", endingTitle:"Survived the Delayed Intervention",
-    endingText:`Monthly profit: ~PKR 40,000. The premium pivot cost PKR 5.8M in additional inventory write-down losses on top of the original fraud.\n\nThe business survived — but barely, and expensively. The total financial damage from choosing the wrong strategy and waiting too long: ~PKR 11M in combined fraud and strategic losses.\n\nLesson: in a crisis, the longer you delay the correct intervention, the more the wrong strategy costs.`,
-    keyInsights:["Opportunity cost of wrong strategy: PKR 5.8M in additional losses","Premium positioning requires physical infrastructure — not just a mental rebrand","Emergency liquidation is a survival tool, not a growth tool","The premium pivot failed because it solved the wrong problem","Speed of course-correction is itself a business skill"],
-  },
-
-  end_landlord_path:{
-    id:"end_landlord_path", month:4, title:"The Landlord's 60-Day Clock",
-    narrative:`The landlord deferred PKR 400K for 60 days after a difficult conversation — full disclosure required, including the fraud. He respects the honesty. But he is clear: if month 5 rent doesn't arrive in full (plus the deferred amount), eviction begins. You used the 60 days to execute a full Pareto restructure. Sales crossed PKR 700,000 in the final week of the window. Month 5 rent cleared — barely.`,
-    isEnding:true, endingType:"good", endingTitle:"Saved by Transparency and Speed",
-    endingText:`Monthly profit: ~PKR 50,000 after clearing the deferred rent. Business is operational and structurally sound.\n\nThe landlord negotiation worked because of two things: honest disclosure (trust) and a credible action plan (competence). Neither alone would have been enough.\n\nLesson: in a financial crisis, creditors often respond better to honest early communication than to silence followed by default.`,
-    keyInsights:["Creditor communication: honesty + action plan > silence + default","Deferred rent is not free money — it doubles the next payment","The Pareto restructure was the actual fix — the deferral just bought time for it","Transparency with stakeholders is a strategic asset in a crisis","Speed under deadline: a 60-day constraint forced the decision that should have happened on Day 1"],
-  },
-
-  end_normalize_then_pareto:{
-    id:"end_normalize_then_pareto", month:4, title:"Stabilised Through Two Corrections",
-    narrative:`Normalising prices held the customer base that below-cost pricing had built. Sales settled at PKR 420,000 — above breakeven for the first time. Then applying Pareto to the inventory freed another PKR 1.8M in cash and pushed monthly sales to PKR 560,000. Two corrections instead of one, but both were necessary.`,
-    isEnding:true, endingType:"good", endingTitle:"Recovered via Sequential Fixes",
-    endingText:`Monthly profit: ~PKR 130,000. Fraud loss recoverable in ~38 months.\n\nSometimes the right path requires sequential corrections rather than a single insight. The below-cost pricing proved the location; price normalisation made it sustainable; Pareto made it profitable. Each step was necessary.\n\nLesson: recognising which problem to solve first is as important as knowing the solutions.`,
-    keyInsights:["Location value was real — below-market pricing proved it","Price normalisation: customers stay when convenience + habit are established","Sequential problem-solving: not every fix is simultaneous","Pareto inventory: the same 20/80 rule applied at every stage","Velocity is the single most important metric for a small retail business"],
-  },
-};
 
 /* ═══════════════════════════════════════════════════════════════════
    ── CASE STUDY DATA ──
@@ -1700,7 +1462,7 @@ function FreshMartSim({onBack,onComplete}){
               <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:10}}>DECISION MADE</div>
               <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:20}}>{selectedOption.label}</div>
               
-              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{selectedOption.id.toUpperCase()} · WEEK {week}</div>
+              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{selectedOption.id.toUpperCase()} · MONTH {currentMonth}</div>
               <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
                 <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>IMPACT ANALYSIS</div>
                 <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
@@ -2082,17 +1844,9 @@ function SimRoom({caseData,onBack,onComplete}){
               <Tag color={f.severity==="high"?T.red:f.severity==="medium"?T.gold:T.blue} small>{f.severity.toUpperCase()}</Tag>
             </div>
           ))}
-        </div>
-      );
-    }
-    if(activeTab==="ratios"&&caseData.ratios){
-      const sev={ok:T.green,warn:T.gold,bad:T.red};
-      return(
-        <div>
-          <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:2,marginBottom:14}}>{caseData.ratios.title.toUpperCase()}</div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {caseData.ratios.items.map((r,i)=>(
-              <div key={i} style={{background:T.surf,border:`1px solid ${sev[r.severity]||T.border}22`,padding:"13px 16px",display:"flex",gap:16,alignItems:"flex-start"}}>
+              <div key={i} style={{background:T.surf,border:`1px solid ${HC[r.severity]||T.border}22`,padding:"13px 16px",display:"flex",gap:16,alignItems:"flex-start"}}>
                 <div style={{flex:1}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
                     <span style={{fontFamily:T.mono,fontSize:12,color:T.txt,fontWeight:700}}>{r.label}</span>
@@ -2686,7 +2440,7 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
     synopsis,
     ``,
     isSimResult
-      ? `🔀 Simulation outcome: ${displayGrade} — ${simResult.log?.length||0} decisions across ${simResult.log?.[simResult.log.length-1]?.week||"?"} weeks`
+      ? `🔀 Simulation outcome: ${displayGrade} — ${simResult.log?.length||0} decisions across ${simResult.log?.[simResult.log.length-1]?.month||"?"} months`
       : `📊 Result: ${displayPct}% · ${displayGrade} · ${optimalCount}/${topAnswers.length} optimal decisions`,
     ``,
     `🧠 CA concepts examined:`,
@@ -2701,7 +2455,7 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
         ].join("\n")
       : isSimResult&&simResult?.log
       ? [`🔀 Path taken:`,
-         ...(simResult.log.slice(0,5).map((e,i)=>`   ${i+1}. [W${e.week}] ${e.action}`)),
+         ...(simResult.log.slice(0,5).map((e,i)=>`   ${i+1}. [M${e.month||e.week}] ${e.action}`)),
         ].join("\n")
       : "",
     ``,
