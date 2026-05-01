@@ -352,6 +352,252 @@ const FRESHMART_SCENARIOS = {
     ]
   },
 
+  // LOAN PATH - MONTH 2 SCENARIOS
+  month2_cleared_inventory: {
+    id: "month2_cleared_inventory",
+    description: "Month 2: Deep discount sale cleared 200 dead stock units and generated PKR 400K cash. However, profit margins took a hit. You need to rebuild margins while maintaining cash flow.",
+    options: [
+      {
+        id: "margin_recovery",
+        label: "Margin Recovery - Strategic price increases on key items",
+        effect: {
+          profit_margin: "+0.12",
+          customer_footfall: "-10",
+          customer_satisfaction: "-0.1"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "volume_focus",
+        label: "Volume Focus - Push for higher sales volume at current margins",
+        effect: {
+          monthly_sales: "+300000",
+          cash_on_hand: "-150000",
+          customer_satisfaction: "+0.1"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_growth_bet: {
+    id: "month2_growth_bet",
+    description: "Month 2: Marketing and layout improvements increased footfall by 30 people. Initial investment of PKR 200K is showing promise, but you need to convert this traffic into sustainable sales.",
+    options: [
+      {
+        id: "conversion_optimization",
+        label: "Conversion Optimization - Better merchandising and upselling",
+        effect: {
+          monthly_sales: "+400000",
+          profit_margin: "+0.05",
+          customer_satisfaction: "+0.2"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "marketing_scale",
+        label: "Scale Marketing - Double down on successful campaigns",
+        effect: {
+          customer_footfall: "+25",
+          cash_on_hand: "-300000",
+          monthly_sales: "+200000"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_debt_trap: {
+    id: "month2_debt_trap",
+    description: "Month 2: Poor loan allocation wasted PKR 100K and increased debt stress. The business is now in a weaker position with higher financial obligations. You need to fix this quickly.",
+    options: [
+      {
+        id: "emergency_cost_cut",
+        label: "Emergency Cost Cutting - Reduce expenses immediately",
+        effect: {
+          monthly_expenses: "-150000",
+          employee_morale: "-0.3",
+          customer_satisfaction: "-0.2"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "debt_restructuring",
+        label: "Debt Restructuring - Negotiate better loan terms",
+        effect: {
+          debt_stress: "-0.2",
+          supplier_relations: "-0.1",
+          cash_on_hand: "+100000"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  // PRICING PATH - MONTH 2 SCENARIOS
+  month2_demand_collapse: {
+    id: "month2_demand_collapse",
+    description: "Month 2: Blind price increases caused demand to collapse - 40 fewer customers per day. Margins improved but volume dropped significantly. You need to recover customer traffic.",
+    options: [
+      {
+        id: "price_correction",
+        label: "Price Correction - Roll back some increases to recover traffic",
+        effect: {
+          customer_footfall: "+25",
+          profit_margin: "-0.08",
+          customer_satisfaction: "+0.3"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "value_addition",
+        label: "Value Addition - Add services to justify higher prices",
+        effect: {
+          customer_satisfaction: "+0.2",
+          monthly_expenses: "+100000",
+          customer_footfall: "+10"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_balanced_pricing: {
+    id: "month2_balanced_pricing",
+    description: "Month 2: Selective price increases worked well - modest margin improvement with minimal customer impact. The business is stable but needs growth acceleration.",
+    options: [
+      {
+        id: "strategic_expansion",
+        label: "Strategic Expansion - Add high-margin product lines",
+        effect: {
+          profit_margin: "+0.08",
+          monthly_sales: "+200000",
+          cash_on_hand: "-150000"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "customer_retention",
+        label: "Customer Retention - Loyalty programs to increase repeat business",
+        effect: {
+          customer_satisfaction: "+0.3",
+          monthly_sales: "+250000",
+          cash_on_hand: "-100000"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_inventory_unlock: {
+    id: "month2_inventory_unlock",
+    description: "Month 2: Bundle strategy successfully cleared 100 dead stock units while maintaining customer traffic. Inventory is healthier and cash flow improved.",
+    options: [
+      {
+        id: "bundle_scaling",
+        label: "Scale Bundling - Expand successful bundle strategies",
+        effect: {
+          dead_stock_units: "-100",
+          monthly_sales: "+200000",
+          profit_margin: "+0.03"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "inventory_system",
+        label: "Inventory System - Invest in better inventory management",
+        effect: {
+          inventory_turnover: "+0.3",
+          cash_on_hand: "-200000",
+          dead_stock_units: "-50"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  // SUPPLIER CREDIT PATH - MONTH 2 SCENARIOS
+  month2_stable_supply: {
+    id: "month2_stable_supply",
+    description: "Month 2: Successful supplier negotiations secured PKR 500K credit and improved terms. Supply chain is stable with better cash flow. Time to leverage this advantage.",
+    options: [
+      {
+        id: "inventory_expansion",
+        label: "Inventory Expansion - Use credit to add popular products",
+        effect: {
+          monthly_sales: "+300000",
+          supplier_relations: "+0.1",
+          inventory_turnover: "+0.2"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "cash_reserve",
+        label: "Build Cash Reserve - Hold credit as emergency buffer",
+        effect: {
+          cash_on_hand: "+200000",
+          debt_stress: "-0.1",
+          supplier_relations: "+0.1"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_stagnation: {
+    id: "month2_stagnation",
+    description: "Month 2: Credit rejection left the business in a difficult position. Suppliers are wary and cash pressure continues. You need alternative solutions.",
+    options: [
+      {
+        id: "cost_optimization",
+        label: "Cost Optimization - Find efficiency gains without supplier help",
+        effect: {
+          monthly_expenses: "-100000",
+          employee_morale: "-0.1",
+          inventory_turnover: "+0.1"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "alternative_funding",
+        label: "Alternative Funding - Explore other financing options",
+        effect: {
+          cash_on_hand: "+300000",
+          debt_stress: "+0.15",
+          supplier_relations: "-0.1"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_dependency: {
+    id: "month2_dependency",
+    description: "Month 2: Overusing supplier credit created dependency and strained relationships. You have PKR 800K extra cash but suppliers are concerned about payment reliability.",
+    options: [
+      {
+        id: "relationship_repair",
+        label: "Repair Supplier Relationships - Make partial payments to build trust",
+        effect: {
+          supplier_relations: "+0.3",
+          cash_on_hand: "-400000",
+          debt_stress: "-0.1"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "diversification",
+        label: "Supplier Diversification - Find alternative suppliers to reduce dependency",
+        effect: {
+          supplier_relations: "-0.2",
+          inventory_turnover: "+0.1",
+          monthly_expenses: "-50000"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
   month3_checkpoint: {
     id: "month3_checkpoint",
     description: "MONTH 3 SYSTEM CHECKPOINT: Time to evaluate progress toward the 2M sales target. Your decisions so far have shaped the business trajectory. Based on current performance, you'll either advance to scaling phase or enter distress mode.",
