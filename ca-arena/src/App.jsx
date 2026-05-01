@@ -70,392 +70,418 @@ const WEEKLY_BURN = 100000; // Approximate weekly cash burn
 
 // Scenario-driven FreshMart Simulation
 const FM_INITIAL_STATE = {
-  // Cash & survival
-  cash_on_hand: 2000000,
-  weekly_burn: WEEKLY_BURN,
-  overdue_payables: 0,
-  rent_due: RENT,
-  loan_balance: 0,
-  emergency_days_left: 20,
+  // Financial metrics
+  cash_on_hand: 1000000,  // Monthly sales amount
+  monthly_sales: 1000000,
+  monthly_expenses: 900000,  // 90% cost of sales
+  monthly_burn: 900000,
+  debt_stress: 0.7,  // High due to low margins
   
-  // Commercial performance
-  price_index_vs_market: 1.0,
-  demand_level: 0.7,
-  conversion_rate: 0.3,
-  customer_trust: 0.6,
-  marketing_effectiveness: 0.4,
+  // Fixed costs
+  rent_expense: 400000,
+  salary_expense: 450000,  // 15 employees × 30,000
+  electricity_expense: 50000,
   
-  // Inventory & operations
-  stock_value: 22000000,
-  fast_moving_share: 0.2,
-  dead_stock_share: 0.8,
-  stockout_rate: 0.1,
-  pareto_score: 0.3,
-  pos_installed: false,
-  data_visibility: 0.2,
+  // Business performance
+  customer_footfall: 100,  // 100/day
+  profit_margin: 0.1,  // 10% margin
+  dead_stock_units: 400,  // 400+ slow moving SKUs
+  dead_stock_share: 0.8,  // High dead stock ratio
+  inventory_turnover: 0.3,
   
-  // Decision tracking
-  visited_scenarios: [],
-  week: 1,
-  decisions_made: 0
+  // Stakeholder metrics
+  customer_satisfaction: 0.6,
+  employee_morale: 0.5,
+  supplier_relations: 0.5,
+  
+  // Growth metrics
+  month_target_3: 2000000,  // 2M sales by month 3
+  month_target_6: 4000000,  // 4M sales by month 6
+  capital_invested: 30000000,  // 30M invested
+  
+  // Game state
+  current_month: 0,
+  decisions_made: 0,
+  path_taken: [],
+  checkpoint_passed: false,
+  scaling_phase: false,
+  distress_phase: false
 };
 
-// Scenario Graph - The complete decision tree
+// Comprehensive FreshMart Business Scenario Graph
 const FRESHMART_SCENARIOS = {
+  // MONTH 1 - INITIAL LIQUIDITY TRAP
   start: {
     id: "start",
-    description: "FreshMart is struggling with cash flow. Dead inventory is piling up, customers are leaving, and you have only 20 days of cash remaining. What's your first move?",
+    description: "You walk into FreshMart as a CA intern. The store is in crisis: 400+ SKUs of dead inventory blocking cash, 100 daily customers, 1M monthly sales with only 10% margin due to competitor pressure. Fixed costs: 400K rent + 450K salaries + 50K electricity = 900K monthly burn. The owner needs 2M sales by Month 3 and 4M by Month 6 to recover his 30M investment. What's your first move?",
     options: [
       {
-        id: "pareto",
-        label: "Apply Pareto Principle - Focus on top 20% products",
+        id: "layoff_employees",
+        label: "Layoff Employees - Reduce variable costs immediately",
         effect: {
-          cash_on_hand: "+2000000",
-          dead_stock_share: "-0.3",
-          fast_moving_share: "+0.3",
-          pareto_score: "+0.4",
-          stock_value: "-6000000"
+          salary_expense: "-200000",
+          employee_morale: "-0.3",
+          customer_satisfaction: "-0.1"
         },
-        next: "pareto_success"
+        next: "layoff_decision"
       },
       {
-        id: "pricing",
-        label: "Reduce prices to boost sales volume",
+        id: "take_loan",
+        label: "Take Business Loan - Inject cash for operations",
         effect: {
-          price_index_vs_market: "-0.2",
-          demand_level: "+0.2",
-          conversion_rate: "+0.1",
-          cash_on_hand: "+500000"
+          cash_on_hand: "+1000000",
+          debt_stress: "+0.3"
         },
-        next: "pricing_response"
+        next: "loan_decision"
       },
       {
-        id: "loan",
-        label: "Take emergency loan (PKR 5M at 22% interest)",
+        id: "increase_prices",
+        label: "Increase Prices - Improve margins immediately",
         effect: {
-          cash_on_hand: "+5000000",
-          loan_balance: "+5000000",
-          debt_stress: "+0.4",
-          weekly_burn: "+91000"
+          profit_margin: "+0.15",
+          customer_footfall: "-20",
+          customer_satisfaction: "-0.2"
         },
-        next: "loan_burden"
+        next: "pricing_decision"
+      },
+      {
+        id: "supplier_credit",
+        label: "Negotiate Supplier Credit - Reduce cash pressure",
+        effect: {
+          cash_on_hand: "+300000",
+          supplier_relations: "-0.1"
+        },
+        next: "credit_decision"
       }
     ]
   },
-  
-  pareto_success: {
-    id: "pareto_success",
-    description: "The Pareto analysis worked! You cleared dead stock and generated PKR 2M. Fast-moving inventory is now 50%, but suppliers are concerned about reduced orders. How do you handle supplier relationships?",
+
+  // LAYOFF PATH - MONTH 1 DECISIONS
+  layoff_decision: {
+    id: "layoff_decision",
+    description: "Laying off staff will immediately reduce costs but impacts service quality. How aggressive should you be?",
     options: [
       {
-        id: "negotiate",
-        label: "Negotiate better terms with key suppliers",
+        id: "aggressive_layoff",
+        label: "Aggressive Layoff (40-50% of staff) - Maximum cost reduction",
         effect: {
-          supplier_relationship: "+0.3",
-          stock_value: "-2000000",
-          weekly_burn: "-15000"
+          salary_expense: "-250000",
+          employee_morale: "-0.4",
+          customer_satisfaction: "-0.3",
+          customer_footfall: "-15"
         },
-        next: "supplier_deal"
+        next: "month2_low_service"
       },
       {
-        id: "pos_system",
-        label: "Install POS system for better data",
+        id: "smart_layoff",
+        label: "Smart Layoff (20% + role redesign) - Balanced approach",
         effect: {
-          cash_on_hand: "-800000",
-          pos_installed: true,
-          data_visibility: "+0.6",
-          execution_speed: "+0.2"
+          salary_expense: "-150000",
+          employee_morale: "-0.2",
+          inventory_turnover: "+0.2"
         },
-        next: "data_transformation"
-      },
-      {
-        id: "marketing",
-        label: "Launch marketing campaign for fast-moving items",
-        effect: {
-          cash_on_hand: "-300000",
-          marketing_effectiveness: "+0.3",
-          demand_level: "+0.15"
-        },
-        next: "marketing_results"
+        next: "month2_optimized_ops"
       }
     ]
   },
-  
-  pricing_response: {
-    id: "pricing_response",
-    description: "Price cuts increased footfall by 20%, but margins are thin. Customer trust is shaky due to perceived quality issues. What's your next move?",
+
+  // LOAN PATH - MONTH 1 DECISIONS
+  loan_decision: {
+    id: "loan_decision",
+    description: "You have 1M in loan funds. How will you allocate this capital for maximum impact?",
     options: [
       {
-        id: "quality_boost",
-        label: "Improve product quality to justify pricing",
+        id: "loan_inventory_clearance",
+        label: "Use for Inventory Clearance - Deep discount sale to free cash",
         effect: {
-          cash_on_hand: "-400000",
-          customer_trust: "+0.3",
-          price_index_vs_market: "+0.1",
-          conversion_rate: "+0.15"
+          dead_stock_units: "-200",
+          cash_on_hand: "+400000",
+          profit_margin: "-0.05"
         },
-        next: "quality_recovery"
+        next: "month2_cleared_inventory"
       },
       {
-        id: "volume_focus",
-        label: "Double down on volume strategy",
+        id: "loan_expansion",
+        label: "Use for Expansion - Marketing and store layout improvements",
         effect: {
-          price_index_vs_market: "-0.1",
-          demand_level: "+0.25",
-          customer_trust: "-0.1"
+          customer_footfall: "+30",
+          cash_on_hand: "-200000",
+          customer_satisfaction: "+0.1"
         },
-        next: "volume_crisis"
+        next: "month2_growth_bet"
       },
       {
-        id: "segmentation",
-        label: "Create premium and budget segments",
+        id: "loan_poor_allocation",
+        label: "Poor Allocation - Spread too thin across initiatives",
         effect: {
-          cash_on_hand: "-600000",
-          price_index_vs_market: "+0.05",
-          demand_level: "+0.1",
-          customer_trust: "+0.1"
-        },
-        next: "segment_results"
-      }
-    ]
-  },
-  
-  loan_burden: {
-    id: "loan_burden",
-    description: "The PKR 5M loan gave you breathing room, but weekly payments are straining cash flow. Debt stress is at 40%. How do you manage this burden?",
-    options: [
-      {
-        id: "aggressive_growth",
-        label: "Invest aggressively in growth to outpace debt",
-        effect: {
-          cash_on_hand: "-3000000",
-          demand_level: "+0.4",
-          conversion_rate: "+0.2",
-          debt_stress: "+0.1"
-        },
-        next: "growth_risk"
-      },
-      {
-        id: "conservative",
-        label: "Cut costs and conserve cash",
-        effect: {
-          weekly_burn: "-20000",
-          demand_level: "-0.1",
-          customer_trust: "-0.1"
-        },
-        next: "conservative_path"
-      },
-      {
-        id: "restructure",
-        label: "Restructure operations for efficiency",
-        effect: {
-          cash_on_hand: "-1000000",
-          weekly_burn: "-30000",
-          execution_speed: "+0.3"
-        },
-        next: "restructure_results"
-      }
-    ]
-  },
-  
-  // Ending scenarios
-  ending_success: {
-    id: "ending_success",
-    description: "FreshMart has successfully recovered! Your strategic decisions turned the business around. Cash flow is stable, customer trust is restored, and operations are efficient.",
-    isEnding: true,
-    type: "success"
-  },
-  
-  ending_failure: {
-    id: "ending_failure", 
-    description: "FreshMart couldn't survive the crisis. Despite your efforts, the business ran out of cash and had to cease operations.",
-    isEnding: true,
-    type: "failure"
-  },
-  
-  ending_struggle: {
-    id: "ending_struggle",
-    description: "FreshMart survives but continues to struggle. The business is stable but fragile, requiring constant attention to maintain operations.",
-    isEnding: true,
-    type: "struggle"
-  },
-  
-  // Additional scenario paths
-  supplier_deal: {
-    id: "supplier_deal",
-    description: "Supplier negotiations went well! Better terms reduced weekly costs, but some suppliers are wary. Cash flow improved, but you need to rebuild supplier confidence.",
-    options: [
-      {
-        id: "rebuild_trust",
-        label: "Invest in supplier relationships",
-        effect: {
-          cash_on_hand: "-500000",
-          supplier_relationship: "+0.4",
-          stockout_rate: "-0.05"
-        },
-        next: "trust_building"
-      },
-      {
-        id: "diversify",
-        label: "Diversify supplier base",
-        effect: {
-          cash_on_hand: "-300000",
-          supplier_relationship: "+0.2",
-          execution_speed: "-0.1"
-        },
-        next: "diversification"
-      }
-    ]
-  },
-  
-  data_transformation: {
-    id: "data_transformation",
-    description: "The POS system is live! Real-time data is transforming operations. You can now see exactly what's selling and when. How do you leverage this new visibility?",
-    options: [
-      {
-        id: "dynamic_pricing",
-        label: "Implement dynamic pricing based on data",
-        effect: {
-          price_index_vs_market: "+0.15",
-          demand_level: "+0.1",
-          conversion_rate: "+0.1"
-        },
-        next: "pricing_optimization"
-      },
-      {
-        id: "inventory_opt",
-        label: "Optimize inventory based on demand patterns",
-        effect: {
-          stock_value: "-3000000",
-          stockout_rate: "-0.15",
-          fast_moving_share: "+0.2"
-        },
-        next: "inventory_efficiency"
-      }
-    ]
-  },
-  
-  marketing_results: {
-    id: "marketing_results",
-    description: "Marketing campaign boosted demand by 15%! More customers are coming in, but can you convert them effectively? The campaign cost PKR 300K.",
-    options: [
-      {
-        id: "upsell",
-        label: "Focus on upselling and cross-selling",
-        effect: {
-          conversion_rate: "+0.2",
-          customer_trust: "+0.1",
-          execution_speed: "-0.1"
-        },
-        next: "conversion_focus"
-      },
-      {
-        id: "expand_campaign",
-        label: "Expand marketing to new areas",
-        effect: {
-          cash_on_hand: "-400000",
-          demand_level: "+0.2",
-          marketing_effectiveness: "+0.2"
-        },
-        next: "expansion_risk"
-      }
-    ]
-  },
-  
-  // Crisis scenarios
-  growth_risk: {
-    id: "growth_risk",
-    description: "Aggressive growth investment is straining cash! Demand is up 40% but debt stress is increasing. You're walking a fine line between growth and collapse.",
-    options: [
-      {
-        id: "double_down",
-        label: "Double down on growth strategy",
-        effect: {
-          cash_on_hand: "-2000000",
-          demand_level: "+0.3",
+          cash_on_hand: "-100000",
           debt_stress: "+0.2"
         },
-        next: "growth_or_bust"
-      },
-      {
-        id: "consolidate",
-        label: "Consolidate and stabilize",
-        effect: {
-          demand_level: "-0.1",
-          debt_stress: "-0.1",
-          weekly_burn: "-20000"
-        },
-        next: "stabilization"
+        next: "month2_debt_trap"
       }
     ]
   },
-  
-  volume_crisis: {
-    id: "volume_crisis",
-    description: "Volume strategy backfired! Margins are too thin and customer trust is declining. You're losing money on each sale but customer count is high.",
+
+  // PRICING PATH - MONTH 1 DECISIONS
+  pricing_decision: {
+    id: "pricing_decision",
+    description: "Price increases can boost margins but may drive customers away. What's your strategy?",
     options: [
       {
-        id: "premium_shift",
-        label: "Shift to premium products",
+        id: "blind_increase",
+        label: "Blind Price Increase - Apply across all products",
         effect: {
-          cash_on_hand: "-800000",
-          price_index_vs_market: "+0.3",
-          customer_trust: "+0.2",
-          demand_level: "-0.2"
+          profit_margin: "+0.2",
+          customer_footfall: "-40",
+          customer_satisfaction: "-0.4"
         },
-        next: "premium_transition"
+        next: "month2_demand_collapse"
       },
       {
-        id: "cost_cut",
-        label: "Cut costs to maintain volume",
+        id: "selective_increase",
+        label: "Selective Increase - Only on essential items",
         effect: {
-          weekly_burn: "-30000",
-          customer_trust: "-0.2",
-          execution_speed: "+0.1"
+          profit_margin: "+0.1",
+          customer_footfall: "-10",
+          customer_satisfaction: "-0.1"
         },
-        next: "cost_cutting"
+        next: "month2_balanced_pricing"
+      },
+      {
+        id: "bundle_strategy",
+        label: "Bundle Strategy - Package slow items with popular ones",
+        effect: {
+          dead_stock_units: "-100",
+          profit_margin: "+0.08",
+          customer_footfall: "+5"
+        },
+        next: "month2_inventory_unlock"
       }
     ]
+  },
+
+  // SUPPLIER CREDIT PATH - MONTH 1 DECISIONS
+  credit_decision: {
+    id: "credit_decision",
+    description: "Supplier negotiations can provide breathing room or create dependency. What's the outcome?",
+    options: [
+      {
+        id: "successful_negotiation",
+        label: "Successful Negotiation - Secured favorable credit terms",
+        effect: {
+          cash_on_hand: "+500000",
+          supplier_relations: "+0.2",
+          inventory_turnover: "+0.1"
+        },
+        next: "month2_stable_supply"
+      },
+      {
+        id: "rejected_credit",
+        label: "Credit Rejected - Suppliers unwilling to extend terms",
+        effect: {
+          supplier_relations: "-0.2",
+          debt_stress: "+0.1"
+        },
+        next: "month2_stagnation"
+      },
+      {
+        id: "overuse_credit",
+        label: "Overuse Credit - Took maximum available, creating dependency",
+        effect: {
+          cash_on_hand: "+800000",
+          supplier_relations: "-0.3",
+          debt_stress: "+0.2"
+        },
+        next: "month2_dependency"
+      }
+    ]
+  },
+
+  // MONTH 2 PATHS - COMBO PHASE PREPARATION
+  month2_low_service: {
+    id: "month2_low_service",
+    description: "Month 2: Aggressive layoffs reduced costs but service quality suffered. Customer complaints are up, and some shelves are poorly stocked. You need to address the service gap while maintaining cost control.",
+    options: [
+      {
+        id: "service_recovery",
+        label: "Service Recovery - Retrain remaining staff, improve processes",
+        effect: {
+          employee_morale: "+0.2",
+          customer_satisfaction: "+0.3",
+          salary_expense: "+50000"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "automation",
+        label: "Invest in Automation - Self-checkout, inventory systems",
+        effect: {
+          inventory_turnover: "+0.3",
+          cash_on_hand: "-200000",
+          employee_morale: "-0.1"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month2_optimized_ops: {
+    id: "month2_optimized_ops", 
+    description: "Month 2: Smart layoffs and role redesign improved efficiency. Staff morale is decent, and operations are smoother. Now you can focus on growth initiatives.",
+    options: [
+      {
+        id: "customer_experience",
+        label: "Enhance Customer Experience - Loyalty program, better service",
+        effect: {
+          customer_satisfaction: "+0.3",
+          customer_footfall: "+15",
+          cash_on_hand: "-100000"
+        },
+        next: "month3_checkpoint"
+      },
+      {
+        id: "inventory_optimization",
+        label: "Advanced Inventory Management - JIT ordering, demand forecasting",
+        effect: {
+          dead_stock_units: "-150",
+          inventory_turnover: "+0.4",
+          supplier_relations: "+0.2"
+        },
+        next: "month3_checkpoint"
+      }
+    ]
+  },
+
+  month3_checkpoint: {
+    id: "month3_checkpoint",
+    description: "MONTH 3 SYSTEM CHECKPOINT: Time to evaluate progress toward the 2M sales target. Your decisions so far have shaped the business trajectory. Based on current performance, you'll either advance to scaling phase or enter distress mode.",
+    isEnding: false,
+    checkpoint: true,
+    options: [] // Will be dynamically determined based on performance
+  },
+
+  // SCALE PHASE (Months 4-6) - For successful businesses
+  scaling_phase: {
+    id: "scaling_phase",
+    description: "Months 4-6: You've achieved the 2M sales target! Now the race to 4M begins. The business is stable but needs aggressive growth strategies. What's your scaling approach?",
+    options: [
+      {
+        id: "online_channels",
+        label: "Launch Online Channels - Delivery, e-commerce platform",
+        effect: {
+          customer_footfall: "+50",
+          monthly_sales: "+500000",
+          cash_on_hand: "-300000"
+        },
+        next: "month5_scaling"
+      },
+      {
+        id: "private_label",
+        label: "Develop Private Label Products - Higher margins, brand control",
+        effect: {
+          profit_margin: "+0.15",
+          monthly_sales: "+300000",
+          cash_on_hand: "-400000"
+        },
+        next: "month5_scaling"
+      },
+      {
+        id: "customer_retention",
+        label: "Customer Retention Strategy - Loyalty programs, subscription services",
+        effect: {
+          customer_satisfaction: "+0.3",
+          monthly_sales: "+400000",
+          cash_on_hand: "-200000"
+        },
+        next: "month5_scaling"
+      },
+      {
+        id: "bulk_deals",
+        label: "Bulk Purchase Deals - Negotiate volume discounts with suppliers",
+        effect: {
+          monthly_expenses: "-100000",
+          supplier_relations: "+0.2",
+          inventory_turnover: "+0.2"
+        },
+        next: "month5_scaling"
+      }
+    ]
+  },
+
+  // DISTRESS PHASE (Months 4-6) - For struggling businesses  
+  distress_phase: {
+    id: "distress_phase",
+    description: "Months 4-6: You missed the 2M target. Cash is tight, pressure is mounting. Emergency measures are required to survive. This is make-or-break time.",
+    options: [
+      {
+        id: "heavy_discount",
+        label: "Heavy Discount Clearance - Liquidate everything to generate cash",
+        effect: {
+          dead_stock_units: "-300",
+          cash_on_hand: "+200000",
+          profit_margin: "-0.15"
+        },
+        next: "month5_survival"
+      },
+      {
+        id: "desperate_renegotiation",
+        label: "Desperate Supplier Renegotiation - Emergency terms to stay afloat",
+        effect: {
+          supplier_relations: "-0.4",
+          cash_on_hand: "+150000",
+          debt_stress: "+0.2"
+        },
+        next: "month5_survival"
+      },
+      {
+        id: "shutdown_decision",
+        label: "Consider Shutdown - Acknowledge failure and exit",
+        effect: {},
+        next: "ending_failure"
+      }
+    ]
+  },
+
+  // FINAL ENDINGS
+  ending_success: {
+    id: "ending_success",
+    type: "success",
+    description: "SUCCESS: FreshMart is thriving! You achieved 4M+ monthly sales with healthy cash flow and optimized operations. The owner's 30M investment is recovered, and the business is positioned for sustainable growth. Your strategic decisions transformed a crisis into a success story.",
+    isEnding: true
+  },
+
+  ending_survival: {
+    id: "ending_survival", 
+    type: "survival",
+    description: "SURVIVAL: FreshMart is alive but fragile. You stabilized the business but growth is limited. Sales are improving but cash flow remains tight. The business survives but the owner's full recovery isn't guaranteed. More work needed to reach true success.",
+    isEnding: true
+  },
+
+  ending_failure: {
+    id: "ending_failure",
+    type: "failure", 
+    description: "FAILURE: FreshMart couldn't overcome the liquidity crisis. Despite your efforts, the business collapsed under cash flow pressure. The owner lost his 30M investment, and the store closed. Sometimes even the best decisions can't save a business from certain doom.",
+    isEnding: true
   }
 };
 
 const FM_STATE_META = {
-  cash_on_hand: {label:"Cash on Hand", fmt:"money", icon:"💰", good:"high", unit:"PKR"},
-  weekly_burn: {label:"Weekly Burn", fmt:"money", icon:"🔥", good:"low", unit:"PKR"},
-  overdue_payables: {label:"Overdue Payables", fmt:"money", icon:"📋", good:"low", unit:"PKR"},
-  rent_due: {label:"Rent Due", fmt:"money", icon:"🏠", good:"low", unit:"PKR"},
-  loan_balance: {label:"Loan Balance", fmt:"money", icon:"💳", good:"low", unit:"PKR"},
-  emergency_days_left: {label:"Days Left", fmt:"num", icon:"⏰", good:"high", unit:"days"},
-  
-  price_index_vs_market: {label:"Price vs Market", fmt:"pct", icon:"🏷️", good:"mid", unit:"index"},
-  demand_level: {label:"Demand Level", fmt:"pct", icon:"📊", good:"high", unit:"level"},
-  conversion_rate: {label:"Conversion Rate", fmt:"pct", icon:"🔄", good:"high", unit:"rate"},
-  customer_trust: {label:"Customer Trust", fmt:"pct", icon:"🤝", good:"high", unit:"trust"},
-  marketing_effectiveness: {label:"Marketing Effectiveness", fmt:"pct", icon:"📢", good:"high", unit:"effectiveness"},
-  
-  stock_value: {label:"Stock Value", fmt:"money", icon:"📦", good:"mid", unit:"PKR"},
-  fast_moving_share: {label:"Fast-Moving Stock", fmt:"pct", icon:"⚡", good:"high", unit:"share"},
-  dead_stock_share: {label:"Dead Stock", fmt:"pct", icon:"🗑️", good:"low", unit:"share"},
-  stockout_rate: {label:"Stockout Rate", fmt:"pct", icon:"❌", good:"low", unit:"rate"},
-  assortment_fit: {label:"Assortment Fit", fmt:"pct", icon:"🎯", good:"high", unit:"fit"},
-  
-  pareto_score: {label:"Pareto Score", fmt:"pct", icon:"📈", good:"high", unit:"score"},
-  data_visibility: {label:"Data Visibility", fmt:"pct", icon:"👁️", good:"high", unit:"visibility"},
-  supplier_relationship: {label:"Supplier Relations", fmt:"pct", icon:"🤝", good:"high", unit:"relationship"},
-  landlord_relationship: {label:"Landlord Relations", fmt:"pct", icon:"🏢", good:"high", unit:"relationship"},
-  execution_speed: {label:"Execution Speed", fmt:"pct", icon:"⚡", good:"high", unit:"speed"},
-  
-  debt_stress: {label:"Debt Stress", fmt:"pct", icon:"😰", good:"low", unit:"stress"},
-  recovery_momentum: {label:"Recovery Momentum", fmt:"pct", icon:"🚀", good:"high", unit:"momentum"},
-  time_since_problem_started: {label:"Weeks Passed", fmt:"num", icon:"📅", good:"low", unit:"weeks"},
-  
-  // Legacy compatibility
-  cash: {label:"Liquid Cash", fmt:"money", icon:"💰", good:"high"},
-  monthlySales: {label:"Monthly Sales", fmt:"money", icon:"📈", good:"high"},
-  inventory: {label:"Inventory Value", fmt:"money", icon:"📦", good:"mid"},
-  customerCount: {label:"Daily Footfall", fmt:"num", icon:"👥", good:"high"},
-  staffMorale: {label:"Staff Morale", fmt:"pct", icon:"😐", good:"high"},
-  ownerStress: {label:"Owner Stress", fmt:"pct", icon:"😰", good:"low"},
+  cash_on_hand: { label: "Cash on Hand", good: "high", unit: "PKR" },
+  monthly_sales: { label: "Monthly Sales", good: "high", unit: "PKR" },
+  monthly_expenses: { label: "Monthly Expenses", good: "low", unit: "PKR" },
+  monthly_burn: { label: "Monthly Burn", good: "low", unit: "PKR" },
+  debt_stress: { label: "Debt Stress", good: "low", unit: "%" },
+  rent_expense: { label: "Rent Expense", good: "low", unit: "PKR" },
+  salary_expense: { label: "Salary Expense", good: "low", unit: "PKR" },
+  electricity_expense: { label: "Electricity", good: "low", unit: "PKR" },
+  customer_footfall: { label: "Daily Footfall", good: "high", unit: "people" },
+  profit_margin: { label: "Profit Margin", good: "high", unit: "%" },
+  dead_stock_units: { label: "Dead Stock Units", good: "low", unit: "SKUs" },
+  dead_stock_share: { label: "Dead Stock Share", good: "low", unit: "%" },
+  inventory_turnover: { label: "Inventory Turnover", good: "high", unit: "turns" },
+  customer_satisfaction: { label: "Customer Satisfaction", good: "high", unit: "%" },
+  employee_morale: { label: "Employee Morale", good: "high", unit: "%" },
+  supplier_relations: { label: "Supplier Relations", good: "high", unit: "%" }
 };
 
 // Action cards with eligibility conditions and effects
@@ -1472,10 +1498,10 @@ function AnimStat({value,prevValue,statKey}){
 }
 
 function FreshMartSim({onBack,onComplete}){
-  // Single active scenario state
+  // Month-based business simulation state
   const [state, setState] = useState({...FM_INITIAL_STATE});
   const [currentScenario, setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
-  const [week, setWeek] = useState(1);
+  const [currentMonth, setCurrentMonth] = useState(1);
   const [decisionHistory, setDecisionHistory] = useState([]);
   const [phase, setPhase] = useState("decision");
   const [selectedOption, setSelectedOption] = useState(null);
@@ -1489,6 +1515,12 @@ function FreshMartSim({onBack,onComplete}){
   // Calculate derived state
   const recoveryScore = calculateRecoveryScore(state);
   const isEnding = currentScenario?.isEnding || false;
+  const isCheckpoint = currentScenario?.checkpoint || false;
+  
+  // Business performance calculations
+  const monthlyProfit = state.monthly_sales - state.monthly_expenses;
+  const cashFlowPositive = monthlyProfit > 0;
+  const salesTargetProgress = state.monthly_sales / state.month_target_3; // Month 3 target initially
   
   // Apply option effects to state
   function applyOptionEffects(baseState, effects) {
@@ -1515,34 +1547,50 @@ function FreshMartSim({onBack,onComplete}){
     return newState;
   }
   
-  // Resolve next scenario based on option
+  // Resolve next scenario based on option and handle checkpoint logic
   function resolveNextScenario(nextId, currentState) {
-    // Check for ending conditions first
-    if (week >= 4) {
-      if (currentState.cash_on_hand <= 0) {
-        return FRESHMART_SCENARIOS.ending_failure;
-      }
-      
-      if (currentState.debt_stress > 0.8 && currentState.weekly_burn > currentState.cash_on_hand * 0.1) {
-        return FRESHMART_SCENARIOS.ending_failure;
-      }
-      
-      if (recoveryScore >= 75 && currentState.cash_on_hand > 1500000 && currentState.emergency_days_left > 30) {
-        return FRESHMART_SCENARIOS.ending_success;
-      }
-      
-      if (week >= 12) {
-        if (recoveryScore >= 50 && currentState.cash_on_hand > 800000 && currentState.emergency_days_left > 14) {
-          return FRESHMART_SCENARIOS.ending_success;
-        } else if (currentState.cash_on_hand > 500000) {
-          return FRESHMART_SCENARIOS.ending_struggle;
-        } else {
-          return FRESHMART_SCENARIOS.ending_failure;
-        }
-      }
+    // Handle checkpoint evaluation at Month 3
+    if (currentMonth === 3 && nextId === "month3_checkpoint") {
+      return evaluateCheckpoint(currentState);
     }
     
-    return FRESHMART_SCENARIOS[nextId] || FRESHMART_SCENARIOS.ending_struggle;
+    // Handle final ending conditions
+    if (currentMonth >= 6) {
+      return evaluateFinalOutcome(currentState);
+    }
+    
+    // Return the specified next scenario
+    return FRESHMART_SCENARIOS[nextId] || FRESHMART_SCENARIOS.ending_failure;
+  }
+  
+  // Evaluate Month 3 checkpoint and determine phase
+  function evaluateCheckpoint(currentState) {
+    const salesTarget = currentState.month_target_3; // 2M sales target
+    const salesAchieved = currentState.monthly_sales;
+    const targetMet = salesAchieved >= salesTarget;
+    
+    if (targetMet && cashFlowPositive) {
+      // Advance to scaling phase
+      return FRESHMART_SCENARIOS.scaling_phase;
+    } else {
+      // Enter distress phase
+      return FRESHMART_SCENARIOS.distress_phase;
+    }
+  }
+  
+  // Evaluate final outcome at Month 6
+  function evaluateFinalOutcome(currentState) {
+    const finalTarget = currentState.month_target_6; // 4M sales target
+    const salesAchieved = currentState.monthly_sales;
+    const targetMet = salesAchieved >= finalTarget;
+    
+    if (targetMet && cashFlowPositive && currentState.dead_stock_units < 100) {
+      return FRESHMART_SCENARIOS.ending_success;
+    } else if (salesAchieved >= 3000000 && cashFlowPositive) {
+      return FRESHMART_SCENARIOS.ending_survival;
+    } else {
+      return FRESHMART_SCENARIOS.ending_failure;
+    }
   }
   
   // Handle option selection
@@ -1553,7 +1601,7 @@ function FreshMartSim({onBack,onComplete}){
     const newState = applyOptionEffects(state, option.effect);
     
     const decision = {
-      week: week,
+      month: currentMonth,
       scenarioId: currentScenario.id,
       optionId: option.id,
       optionLabel: option.label,
@@ -1564,14 +1612,14 @@ function FreshMartSim({onBack,onComplete}){
     setState(newState);
   }
   
-  // Handle continue to next scenario
+  // Handle continue to next scenario with month progression
   function handleContinue() {
     if (isEnding) {
       onComplete && onComplete({
-        log: decisionHistory.map(d => ({ action: d.optionLabel, week: d.week })),
+        log: decisionHistory.map(d => ({ action: d.optionLabel, month: d.month })),
         state: state,
         endingType: currentScenario.type,
-        week: week,
+        month: currentMonth,
         caseCompany: "FreshMart",
         caseDiff: "SEED",
         caseType: "simulation",
@@ -1584,20 +1632,44 @@ function FreshMartSim({onBack,onComplete}){
     const nextScenario = resolveNextScenario(selectedOption.next, state);
     setCurrentScenario(nextScenario);
     
-    const newWeek = week + 1;
-    setWeek(newWeek);
+    // Advance month
+    const newMonth = currentMonth + 1;
+    setCurrentMonth(newMonth);
     
-    const updatedState = {
-      ...state,
-      cash_on_hand: Math.max(0, state.cash_on_hand - state.weekly_burn),
-      emergency_days_left: Math.max(0, Math.floor((state.cash_on_hand - state.weekly_burn) / state.weekly_burn * 7))
-    };
+    // Apply monthly business operations
+    const updatedState = applyMonthlyOperations(state, newMonth);
     
     setState(updatedState);
     setPhase("decision");
     setSelectedOption(null);
     
     setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
+  }
+  
+  // Apply monthly business operations and updates
+  function applyMonthlyOperations(currentState, month) {
+    const newState = { ...currentState };
+    
+    // Apply monthly burn (expenses)
+    newState.cash_on_hand = Math.max(0, currentState.cash_on_hand - currentState.monthly_burn);
+    
+    // Update month-specific targets
+    if (month >= 4) {
+      newState.month_target_6 = 4000000; // Update to Month 6 target
+    }
+    
+    // Apply some business dynamics based on current state
+    if (currentState.customer_satisfaction > 0.7) {
+      newState.monthly_sales = Math.min(currentState.monthly_sales * 1.1, 5000000);
+    } else if (currentState.customer_satisfaction < 0.3) {
+      newState.monthly_sales = Math.max(currentState.monthly_sales * 0.9, 500000);
+    }
+    
+    // Update derived values
+    newState.current_month = month;
+    newState.decisions_made = (newState.decisions_made || 0) + 1;
+    
+    return newState;
   }
   
   // Generate key insights for LinkedIn card
@@ -1629,7 +1701,7 @@ function FreshMartSim({onBack,onComplete}){
   function resetSimulation() {
     setState({...FM_INITIAL_STATE});
     setCurrentScenario(FRESHMART_SCENARIOS.start);
-    setWeek(1);
+    setCurrentMonth(1);
     setDecisionHistory([]);
     setPhase("decision");
     setSelectedOption(null);
@@ -1652,10 +1724,24 @@ function FreshMartSim({onBack,onComplete}){
         <div style={{flex:1,minWidth:0}}>
           {phase === "decision" && !isEnding && (
             <div>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>WEEK {week} · SCENARIO</div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>
+                {isCheckpoint ? `MONTH ${currentMonth} · SYSTEM CHECKPOINT` : `MONTH ${currentMonth} · SCENARIO`}
+              </div>
               <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:24}}>{currentScenario.description}</div>
               
-              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{currentScenario.options.length} OPTIONS AVAILABLE</div>
+              {isCheckpoint ? (
+                <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
+                  <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>PERFORMANCE EVALUATION</div>
+                  <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
+                    Current Sales: PKR {fmtMoney(state.monthly_sales)} | Target: PKR {fmtMoney(state.month_target_3)}
+                    {salesTargetProgress >= 1 ? " ✓ TARGET MET" : " ✗ TARGET MISSED"}
+                  </div>
+                </div>
+              ) : (
+                <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>
+                  {currentScenario.options.length} OPTIONS AVAILABLE
+                </div>
+              )}
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
                 {currentScenario.options.map((option, i) => (
                   <div key={option.id} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"18px 20px",cursor:"pointer",transition:"all .15s"}} onClick={() => handleOptionSelect(option)}>
@@ -1695,7 +1781,7 @@ function FreshMartSim({onBack,onComplete}){
               <div style={{background:T.surf,border:`1px solid ${endColor}`,padding:"24px 26px",marginBottom:20}}>
                 <div style={{fontFamily:T.sans,fontSize:15,color:endColor,fontWeight:700,marginBottom:12}}>{currentScenario.type === "success" ? "FreshMart Recovered!" : currentScenario.type === "failure" ? "FreshMart Failed" : "FreshMart Survives"}</div>
                 <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{currentScenario.description}</pre>
-                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Week {week} · Recovery Score: {Math.round(recoveryScore)}%</div>
+                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Month {currentMonth} · Recovery Score: {Math.round(recoveryScore)}%</div>
               </div>
               <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
             </div>
@@ -1710,7 +1796,7 @@ function FreshMartSim({onBack,onComplete}){
                     <div style={{width:16,height:16,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span></div>
                     <div>
                       <div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{decision.optionLabel}</div>
-                      <div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Week {decision.week}</div>
+                      <div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Month {decision.month}</div>
                     </div>
                   </div>
                 ))}
@@ -1723,12 +1809,14 @@ function FreshMartSim({onBack,onComplete}){
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS METRICS</div>
           
           {[
-            {key: "cash_on_hand", label: "Cash on Hand", icon: "💰", fmt: "money"},
-            {key: "emergency_days_left", label: "Days Left", icon: "⏰", fmt: "num"},
-            {key: "recovery_score", label: "Recovery Score", icon: "📈", fmt: "pct", custom: Math.round(recoveryScore)},
-            {key: "debt_stress", label: "Debt Stress", icon: "😰", fmt: "pct"},
-            {key: "fast_moving_share", label: "Fast-Moving Stock", icon: "⚡", fmt: "pct"},
-            {key: "customer_trust", label: "Customer Trust", icon: "🤝", fmt: "pct"}
+            {key: "monthly_sales", label: "Monthly Sales", icon: "💰", fmt: "money"},
+            {key: "monthly_expenses", label: "Monthly Expenses", icon: "📊", fmt: "money"},
+            {key: "cash_on_hand", label: "Cash on Hand", icon: "💵", fmt: "money"},
+            {key: "profit_margin", label: "Profit Margin", icon: "📈", fmt: "pct"},
+            {key: "dead_stock_units", label: "Dead Stock Units", icon: "📦", fmt: "num"},
+            {key: "customer_footfall", label: "Daily Footfall", icon: "👥", fmt: "num"},
+            {key: "customer_satisfaction", label: "Customer Satisfaction", icon: "😊", fmt: "pct"},
+            {key: "employee_morale", label: "Employee Morale", icon: "👨‍💼", fmt: "pct"}
           ].map(({key, label, icon, fmt, custom}) => {
             const value = custom !== undefined ? custom : state[key];
             const meta = FM_STATE_META[key];
@@ -1749,6 +1837,10 @@ function FreshMartSim({onBack,onComplete}){
               </div>
             );
           })}
+          
+          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
+            📊 Target: PKR {fmtMoney(currentMonth <= 3 ? state.month_target_3 : state.month_target_6)} by Month {currentMonth <= 3 ? 3 : 6}
+          </div>
           
           <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
             💡 Each decision shapes the future path. Choose carefully.
