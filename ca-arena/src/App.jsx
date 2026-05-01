@@ -68,7 +68,7 @@ input:focus,button:focus{outline:none;}
 const RENT = 400000;
 const WEEKLY_BURN = 100000; // Approximate weekly cash burn
 
-// Comprehensive state variables
+// Scenario-driven FreshMart Simulation
 const FM_INITIAL_STATE = {
   // Cash & survival
   cash_on_hand: 2000000,
@@ -76,49 +76,347 @@ const FM_INITIAL_STATE = {
   overdue_payables: 0,
   rent_due: RENT,
   loan_balance: 0,
-  emergency_days_left: 20, // Days until cash runs out
-  
-  // Action tracking
-  used_actions: [], // Track actions that have been used
-  unlocked_actions: [], // Track actions that have been unlocked through decisions
-  action_cooldowns: {}, // Track cooldown periods for actions
+  emergency_days_left: 20,
   
   // Commercial performance
-  price_index_vs_market: 1.0, // 1.0 = market price
-  demand_level: 0.7, // 0-1 scale
-  conversion_rate: 0.3, // Footfall to sales conversion
+  price_index_vs_market: 1.0,
+  demand_level: 0.7,
+  conversion_rate: 0.3,
   customer_trust: 0.6,
   marketing_effectiveness: 0.4,
   
-  // Inventory & assortment
+  // Inventory & operations
   stock_value: 22000000,
-  fast_moving_share: 0.2, // % of inventory that's fast-moving
-  dead_stock_share: 0.8, // % of inventory that's dead stock
+  fast_moving_share: 0.2,
+  dead_stock_share: 0.8,
   stockout_rate: 0.1,
-  assortment_fit: 0.3, // How well assortment matches demand
-  
-  // Operations
-  pareto_score: 0.3, // How well Pareto principle is applied
+  pareto_score: 0.3,
   pos_installed: false,
   data_visibility: 0.2,
-  supplier_relationship: 0.7,
-  landlord_relationship: 0.6,
-  execution_speed: 0.5,
   
-  // Risk/trajectory
-  debt_stress: 0.0, // Increases with loan balance
-  recovery_momentum: 0.3,
-  time_since_problem_started: 0, // In weeks
-  emergency_actions_used: 0,
+  // Decision tracking
+  visited_scenarios: [],
+  week: 1,
+  decisions_made: 0
+};
+
+// Scenario Graph - The complete decision tree
+const FRESHMART_SCENARIOS = {
+  start: {
+    id: "start",
+    description: "FreshMart is struggling with cash flow. Dead inventory is piling up, customers are leaving, and you have only 20 days of cash remaining. What's your first move?",
+    options: [
+      {
+        id: "pareto",
+        label: "Apply Pareto Principle - Focus on top 20% products",
+        effect: {
+          cash_on_hand: "+2000000",
+          dead_stock_share: "-0.3",
+          fast_moving_share: "+0.3",
+          pareto_score: "+0.4",
+          stock_value: "-6000000"
+        },
+        next: "pareto_success"
+      },
+      {
+        id: "pricing",
+        label: "Reduce prices to boost sales volume",
+        effect: {
+          price_index_vs_market: "-0.2",
+          demand_level: "+0.2",
+          conversion_rate: "+0.1",
+          cash_on_hand: "+500000"
+        },
+        next: "pricing_response"
+      },
+      {
+        id: "loan",
+        label: "Take emergency loan (PKR 5M at 22% interest)",
+        effect: {
+          cash_on_hand: "+5000000",
+          loan_balance: "+5000000",
+          debt_stress: "+0.4",
+          weekly_burn: "+91000"
+        },
+        next: "loan_burden"
+      }
+    ]
+  },
   
-  // Legacy compatibility
-  cash: 2000000,
-  monthlySales: 280000,
-  inventory: 22000000,
-  customerCount: 140,
-  staffMorale: 45,
-  ownerStress: 82,
-  rentArrears: 0,
+  pareto_success: {
+    id: "pareto_success",
+    description: "The Pareto analysis worked! You cleared dead stock and generated PKR 2M. Fast-moving inventory is now 50%, but suppliers are concerned about reduced orders. How do you handle supplier relationships?",
+    options: [
+      {
+        id: "negotiate",
+        label: "Negotiate better terms with key suppliers",
+        effect: {
+          supplier_relationship: "+0.3",
+          stock_value: "-2000000",
+          weekly_burn: "-15000"
+        },
+        next: "supplier_deal"
+      },
+      {
+        id: "pos_system",
+        label: "Install POS system for better data",
+        effect: {
+          cash_on_hand: "-800000",
+          pos_installed: true,
+          data_visibility: "+0.6",
+          execution_speed: "+0.2"
+        },
+        next: "data_transformation"
+      },
+      {
+        id: "marketing",
+        label: "Launch marketing campaign for fast-moving items",
+        effect: {
+          cash_on_hand: "-300000",
+          marketing_effectiveness: "+0.3",
+          demand_level: "+0.15"
+        },
+        next: "marketing_results"
+      }
+    ]
+  },
+  
+  pricing_response: {
+    id: "pricing_response",
+    description: "Price cuts increased footfall by 20%, but margins are thin. Customer trust is shaky due to perceived quality issues. What's your next move?",
+    options: [
+      {
+        id: "quality_boost",
+        label: "Improve product quality to justify pricing",
+        effect: {
+          cash_on_hand: "-400000",
+          customer_trust: "+0.3",
+          price_index_vs_market: "+0.1",
+          conversion_rate: "+0.15"
+        },
+        next: "quality_recovery"
+      },
+      {
+        id: "volume_focus",
+        label: "Double down on volume strategy",
+        effect: {
+          price_index_vs_market: "-0.1",
+          demand_level: "+0.25",
+          customer_trust: "-0.1"
+        },
+        next: "volume_crisis"
+      },
+      {
+        id: "segmentation",
+        label: "Create premium and budget segments",
+        effect: {
+          cash_on_hand: "-600000",
+          price_index_vs_market: "+0.05",
+          demand_level: "+0.1",
+          customer_trust: "+0.1"
+        },
+        next: "segment_results"
+      }
+    ]
+  },
+  
+  loan_burden: {
+    id: "loan_burden",
+    description: "The PKR 5M loan gave you breathing room, but weekly payments are straining cash flow. Debt stress is at 40%. How do you manage this burden?",
+    options: [
+      {
+        id: "aggressive_growth",
+        label: "Invest aggressively in growth to outpace debt",
+        effect: {
+          cash_on_hand: "-3000000",
+          demand_level: "+0.4",
+          conversion_rate: "+0.2",
+          debt_stress: "+0.1"
+        },
+        next: "growth_risk"
+      },
+      {
+        id: "conservative",
+        label: "Cut costs and conserve cash",
+        effect: {
+          weekly_burn: "-20000",
+          demand_level: "-0.1",
+          customer_trust: "-0.1"
+        },
+        next: "conservative_path"
+      },
+      {
+        id: "restructure",
+        label: "Restructure operations for efficiency",
+        effect: {
+          cash_on_hand: "-1000000",
+          weekly_burn: "-30000",
+          execution_speed: "+0.3"
+        },
+        next: "restructure_results"
+      }
+    ]
+  },
+  
+  // Ending scenarios
+  ending_success: {
+    id: "ending_success",
+    description: "FreshMart has successfully recovered! Your strategic decisions turned the business around. Cash flow is stable, customer trust is restored, and operations are efficient.",
+    isEnding: true,
+    type: "success"
+  },
+  
+  ending_failure: {
+    id: "ending_failure", 
+    description: "FreshMart couldn't survive the crisis. Despite your efforts, the business ran out of cash and had to cease operations.",
+    isEnding: true,
+    type: "failure"
+  },
+  
+  ending_struggle: {
+    id: "ending_struggle",
+    description: "FreshMart survives but continues to struggle. The business is stable but fragile, requiring constant attention to maintain operations.",
+    isEnding: true,
+    type: "struggle"
+  },
+  
+  // Additional scenario paths
+  supplier_deal: {
+    id: "supplier_deal",
+    description: "Supplier negotiations went well! Better terms reduced weekly costs, but some suppliers are wary. Cash flow improved, but you need to rebuild supplier confidence.",
+    options: [
+      {
+        id: "rebuild_trust",
+        label: "Invest in supplier relationships",
+        effect: {
+          cash_on_hand: "-500000",
+          supplier_relationship: "+0.4",
+          stockout_rate: "-0.05"
+        },
+        next: "trust_building"
+      },
+      {
+        id: "diversify",
+        label: "Diversify supplier base",
+        effect: {
+          cash_on_hand: "-300000",
+          supplier_relationship: "+0.2",
+          execution_speed: "-0.1"
+        },
+        next: "diversification"
+      }
+    ]
+  },
+  
+  data_transformation: {
+    id: "data_transformation",
+    description: "The POS system is live! Real-time data is transforming operations. You can now see exactly what's selling and when. How do you leverage this new visibility?",
+    options: [
+      {
+        id: "dynamic_pricing",
+        label: "Implement dynamic pricing based on data",
+        effect: {
+          price_index_vs_market: "+0.15",
+          demand_level: "+0.1",
+          conversion_rate: "+0.1"
+        },
+        next: "pricing_optimization"
+      },
+      {
+        id: "inventory_opt",
+        label: "Optimize inventory based on demand patterns",
+        effect: {
+          stock_value: "-3000000",
+          stockout_rate: "-0.15",
+          fast_moving_share: "+0.2"
+        },
+        next: "inventory_efficiency"
+      }
+    ]
+  },
+  
+  marketing_results: {
+    id: "marketing_results",
+    description: "Marketing campaign boosted demand by 15%! More customers are coming in, but can you convert them effectively? The campaign cost PKR 300K.",
+    options: [
+      {
+        id: "upsell",
+        label: "Focus on upselling and cross-selling",
+        effect: {
+          conversion_rate: "+0.2",
+          customer_trust: "+0.1",
+          execution_speed: "-0.1"
+        },
+        next: "conversion_focus"
+      },
+      {
+        id: "expand_campaign",
+        label: "Expand marketing to new areas",
+        effect: {
+          cash_on_hand: "-400000",
+          demand_level: "+0.2",
+          marketing_effectiveness: "+0.2"
+        },
+        next: "expansion_risk"
+      }
+    ]
+  },
+  
+  // Crisis scenarios
+  growth_risk: {
+    id: "growth_risk",
+    description: "Aggressive growth investment is straining cash! Demand is up 40% but debt stress is increasing. You're walking a fine line between growth and collapse.",
+    options: [
+      {
+        id: "double_down",
+        label: "Double down on growth strategy",
+        effect: {
+          cash_on_hand: "-2000000",
+          demand_level: "+0.3",
+          debt_stress: "+0.2"
+        },
+        next: "growth_or_bust"
+      },
+      {
+        id: "consolidate",
+        label: "Consolidate and stabilize",
+        effect: {
+          demand_level: "-0.1",
+          debt_stress: "-0.1",
+          weekly_burn: "-20000"
+        },
+        next: "stabilization"
+      }
+    ]
+  },
+  
+  volume_crisis: {
+    id: "volume_crisis",
+    description: "Volume strategy backfired! Margins are too thin and customer trust is declining. You're losing money on each sale but customer count is high.",
+    options: [
+      {
+        id: "premium_shift",
+        label: "Shift to premium products",
+        effect: {
+          cash_on_hand: "-800000",
+          price_index_vs_market: "+0.3",
+          customer_trust: "+0.2",
+          demand_level: "-0.2"
+        },
+        next: "premium_transition"
+      },
+      {
+        id: "cost_cut",
+        label: "Cut costs to maintain volume",
+        effect: {
+          weekly_burn: "-30000",
+          customer_trust: "-0.2",
+          execution_speed: "+0.1"
+        },
+        next: "cost_cutting"
+      }
+    ]
+  }
 };
 
 const FM_STATE_META = {
@@ -1174,425 +1472,256 @@ function AnimStat({value,prevValue,statKey}){
 }
 
 function FreshMartSim({onBack,onComplete}){
-  const [state,setState]=useState({...FM_INITIAL_STATE});
-  const [prevWeekState,setPrevWeekState]=useState(null);
-  const [phase,setPhase]=useState("decision");
-  const [hov,setHov]=useState(null);
-  const [chosen,setChosen]=useState(null);
-  const [log,setLog]=useState([]);
-  const [week,setWeek]=useState(1);
-  const [availableActions,setAvailableActions]=useState([]);
-  const [delayedEffects,setDelayedEffects]=useState([]);
-  const topRef=useRef(null);
-  const [isMobile,setIsMobile]=useState(()=>{if(typeof window==="undefined")return false;return window.innerWidth<=900;});
-  useEffect(()=>{if(typeof window==="undefined")return;const onResize=()=>setIsMobile(window.innerWidth<=900);onResize();window.addEventListener("resize",onResize);return()=>window.removeEventListener("resize",onResize);},[]);
-
+  // Single active scenario state
+  const [state, setState] = useState({...FM_INITIAL_STATE});
+  const [currentScenario, setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
+  const [week, setWeek] = useState(1);
+  const [decisionHistory, setDecisionHistory] = useState([]);
+  const [phase, setPhase] = useState("decision");
+  const [selectedOption, setSelectedOption] = useState(null);
+  const [isMobile, setIsMobile] = useState(() => {
+    if(typeof window==="undefined") return false;
+    return window.innerWidth <= 900;
+  });
+  
+  const topRef = useRef(null);
+  
   // Calculate derived state
   const recoveryScore = calculateRecoveryScore(state);
-  const ending = determineEnding(state, week);
-  const isEnding = ending !== null;
+  const isEnding = currentScenario?.isEnding || false;
   
-  // Check if action eligibility conditions are met
-  function checkEligibility(conditions, currentState) {
-    if (!conditions || conditions.length === 0) return true;
+  // Apply option effects to state
+  function applyOptionEffects(baseState, effects) {
+    const newState = { ...baseState };
     
-    // Handle OR groups
-    const orGroups = [];
-    let currentGroup = [];
-    
-    for (const condition of conditions) {
-      if (condition.operator === "or") {
-        if (currentGroup.length > 0) {
-          orGroups.push(currentGroup);
-          currentGroup = [];
-        }
+    Object.entries(effects).forEach(([key, change]) => {
+      if (typeof change === 'string' && change.startsWith('+')) {
+        const value = parseFloat(change);
+        newState[key] = Math.max(0, (newState[key] || 0) + value);
+      } else if (typeof change === 'string' && change.startsWith('-')) {
+        const value = parseFloat(change);
+        newState[key] = Math.max(0, (newState[key] || 0) + value);
+      } else if (typeof change === 'boolean') {
+        newState[key] = change;
       } else {
-        currentGroup.push(condition);
+        newState[key] = change;
       }
-    }
+    });
     
-    if (currentGroup.length > 0) {
-      orGroups.push(currentGroup);
-    }
-    
-    // If there are OR groups, at least one group must be fully satisfied
-    if (orGroups.length > 1) {
-      return orGroups.some(group => 
-        group.every(condition => checkSingleCondition(condition, currentState))
-      );
-    }
-    
-    // Single group - all conditions must be satisfied
-    return orGroups[0].every(condition => checkSingleCondition(condition, currentState));
-  }
-  
-  function checkSingleCondition(condition, currentState) {
-    const value = currentState[condition.var];
-    switch (condition.operator) {
-      case ">=": return value >= condition.value;
-      case "<=": return value <= condition.value;
-      case ">": return value > condition.value;
-      case "<": return value < condition.value;
-      case "==": return value === condition.value;
-      case "!=": return value !== condition.value;
-      default: return true;
-    }
-  }
-  
-  // Apply action effects to state
-  function applyActionEffects(baseState, action) {
-    let newState = { ...baseState };
-    
-    // Mark action as used if it's one-time
-    if (action.one_time) {
-      newState.used_actions = [...newState.used_actions, action.id];
-    }
-    
-    // Unlock new actions that this action enables
-    if (action.unlocks) {
-      newState.unlocked_actions = [...new Set([...newState.unlocked_actions, ...action.unlocks])];
-    }
-    
-    // Apply immediate effects
-    if (action.effects?.immediate) {
-      action.effects.immediate.forEach(effect => {
-        const change = parseFloat(effect.change);
-        if (effect.change.startsWith('+')) {
-          newState[effect.var] = Math.max(0, newState[effect.var] + change);
-        } else if (effect.change.startsWith('-')) {
-          newState[effect.var] = Math.max(0, newState[effect.var] + change);
-        } else {
-          newState[effect.var] = effect.value;
-        }
-      });
-    }
-    
-    // Add delayed effects to queue
-    if (action.effects?.delayed) {
-      const newDelayed = action.effects.delayed.map(effect => ({
-        ...effect,
-        week: week + effect.delay,
-        actionId: action.id
-      }));
-      setDelayedEffects(prev => [...prev, ...newDelayed]);
-    }
+    // Update derived values
+    newState.emergency_days_left = Math.max(0, Math.floor(newState.cash_on_hand / newState.weekly_burn * 7));
+    newState.decisions_made = (newState.decisions_made || 0) + 1;
     
     return newState;
   }
   
-  // Process delayed effects at week transition
-  function processDelayedEffects(currentState, currentWeek) {
-    let newState = { ...currentState };
-    const remaining = delayedEffects.filter(effect => effect.week !== currentWeek);
-    
-    delayedEffects.forEach(effect => {
-      if (effect.week === currentWeek) {
-        const change = parseFloat(effect.change);
-        if (effect.change.startsWith('+')) {
-          newState[effect.var] = Math.max(0, newState[effect.var] + change);
-        } else if (effect.change.startsWith('-')) {
-          newState[effect.var] = Math.max(0, newState[effect.var] + change);
+  // Resolve next scenario based on option
+  function resolveNextScenario(nextId, currentState) {
+    // Check for ending conditions first
+    if (week >= 4) {
+      if (currentState.cash_on_hand <= 0) {
+        return FRESHMART_SCENARIOS.ending_failure;
+      }
+      
+      if (currentState.debt_stress > 0.8 && currentState.weekly_burn > currentState.cash_on_hand * 0.1) {
+        return FRESHMART_SCENARIOS.ending_failure;
+      }
+      
+      if (recoveryScore >= 75 && currentState.cash_on_hand > 1500000 && currentState.emergency_days_left > 30) {
+        return FRESHMART_SCENARIOS.ending_success;
+      }
+      
+      if (week >= 12) {
+        if (recoveryScore >= 50 && currentState.cash_on_hand > 800000 && currentState.emergency_days_left > 14) {
+          return FRESHMART_SCENARIOS.ending_success;
+        } else if (currentState.cash_on_hand > 500000) {
+          return FRESHMART_SCENARIOS.ending_struggle;
         } else {
-          newState[effect.var] = effect.value;
+          return FRESHMART_SCENARIOS.ending_failure;
         }
       }
-    });
+    }
     
-    setDelayedEffects(remaining);
-    return newState;
+    return FRESHMART_SCENARIOS[nextId] || FRESHMART_SCENARIOS.ending_struggle;
   }
   
-  // Update available actions based on current state
-  function updateAvailableActions(currentState) {
-    const actions = [];
+  // Handle option selection
+  function handleOptionSelect(option) {
+    setSelectedOption(option);
+    setPhase("result");
     
-    Object.entries(ACTION_CARDS).forEach(([key, action]) => {
-      // Skip if action is one-time and already used
-      if (action.one_time && currentState.used_actions.includes(key)) {
-        return;
-      }
-      
-      // Skip if action is on cooldown
-      if (currentState.action_cooldowns[key] && currentState.action_cooldowns[key] > 0) {
-        return;
-      }
-      
-      // Check if action is unlocked (either initially available or unlocked through previous actions)
-      const isUnlocked = !action.requires_unlock || currentState.unlocked_actions.includes(key);
-      
-      if (!isUnlocked) {
-        return;
-      }
-      
-      if (action.variants) {
-        // Handle action families (like pricing_strategy)
-        Object.entries(action.variants).forEach(([variantKey, variant]) => {
-          if (checkEligibility(variant.eligibility?.conditions, currentState)) {
-            actions.push({ ...variant, id: variantKey, family: key });
-          }
-        });
-      } else {
-        // Handle single actions
-        if (checkEligibility(action.eligibility?.conditions, currentState)) {
-          actions.push(action);
-        }
-      }
-    });
+    const newState = applyOptionEffects(state, option.effect);
     
-    setAvailableActions(actions);
-  }
-  
-  function handleSelect(action) {
-    if (phase !== "decision" || isEnding) return;
-    setChosen(action);
-    setPrevWeekState({ ...state });
+    const decision = {
+      week: week,
+      scenarioId: currentScenario.id,
+      optionId: option.id,
+      optionLabel: option.label,
+      effects: option.effect
+    };
     
-    // Apply action effects
-    const newState = applyActionEffects(state, action);
+    setDecisionHistory([...decisionHistory, decision]);
     setState(newState);
-    
-    // Add to log
-    setLog(l => [...l, { action: action.title, week }]);
-    setPhase("consequence");
-    setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
   
+  // Handle continue to next scenario
   function handleContinue() {
     if (isEnding) {
       onComplete && onComplete({
-        log,
-        state,
-        endingType: ending.type,
-        endingTitle: ending.title,
-        recoveryScore,
-        caseCompany: "FreshMart Grocery",
+        log: decisionHistory.map(d => ({ action: d.optionLabel, week: d.week })),
+        state: state,
+        endingType: currentScenario.type,
+        week: week,
+        caseCompany: "FreshMart",
         caseDiff: "SEED",
-        caseType: "scenario",
-        caseId: "GRC-SEED-01"
+        caseType: "simulation",
+        caseId: "freshmart-sim",
+        keyInsights: generateKeyInsights(state, decisionHistory)
       });
       return;
     }
     
-    // Advance to next week
-    const nextWeek = week + 1;
+    const nextScenario = resolveNextScenario(selectedOption.next, state);
+    setCurrentScenario(nextScenario);
     
-    // Process delayed effects
-    let newState = processDelayedEffects(state, nextWeek);
+    const newWeek = week + 1;
+    setWeek(newWeek);
     
-    // Update time-based variables
-    newState.time_since_problem_started = nextWeek;
-    newState.emergency_days_left = Math.max(0, Math.floor(newState.cash_on_hand / (newState.weekly_burn || WEEKLY_BURN) * 7));
+    const updatedState = {
+      ...state,
+      cash_on_hand: Math.max(0, state.cash_on_hand - state.weekly_burn),
+      emergency_days_left: Math.max(0, Math.floor((state.cash_on_hand - state.weekly_burn) / state.weekly_burn * 7))
+    };
     
-    // Update legacy compatibility variables
-    newState.cash = newState.cash_on_hand;
-    newState.monthlySales = Math.round(newState.demand_level * 400000); // Base sales adjusted by demand
-    newState.inventory = newState.stock_value;
-    newState.customerCount = Math.round(newState.demand_level * 200);
-    newState.staffMorale = Math.round(newState.recovery_momentum * 100);
-    newState.ownerStress = Math.round((1 - newState.recovery_momentum) * 100);
-    newState.rentArrears = Math.max(0, newState.rent_due - RENT);
-    
-    setState(newState);
-    setWeek(nextWeek);
-    setChosen(null);
+    setState(updatedState);
     setPhase("decision");
-    setHov(null);
-    topRef.current?.scrollIntoView({ behavior: "smooth" });
+    setSelectedOption(null);
+    
+    setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
   
-  // Update available actions when state changes
-  useEffect(() => {
-    updateAvailableActions(state);
-  }, [state, week]);
-
-  /* ── Ending display logic ── */
-  const showEndingDirect = phase==="decision" && isEnding;
-  const endColor = ending?.type==="perfect" ? T.green
-                 : ending?.type==="good"    ? T.green
-                 : ending?.type==="warn"    ? T.gold
-                 :                                T.red;
-  const endLabel = ending?.type==="perfect" ? "★ OPTIMAL PATH"
-                 : ending?.type==="good"    ? "✓ RECOVERED"
-                 : ending?.type==="warn"    ? "⚠ SURVIVED — BARELY"
-                 :                                "✗ BUSINESS FAILED";
+  // Generate key insights for LinkedIn card
+  function generateKeyInsights(currentState, decisions) {
+    const insights = [];
+    
+    if (currentState.cash_on_hand > 3000000) {
+      insights.push("Strong cash position achieved through strategic decisions");
+    } else if (currentState.emergency_days_left <= 7) {
+      insights.push("Critical cash flow situation required immediate action");
+    }
+    
+    if (currentState.dead_stock_share < 0.3) {
+      insights.push("Successfully optimized inventory management");
+    }
+    
+    if (currentState.customer_trust > 0.8) {
+      insights.push("Customer confidence restored through consistent quality");
+    }
+    
+    if (currentState.debt_stress > 0.6) {
+      insights.push("High debt burden created ongoing financial pressure");
+    }
+    
+    return insights;
+  }
   
-  // Generate situation text based on current state
-  const getSituationText = () => {
-    if (isEnding) {
-      return ending.text;
-    }
-    
-    const issues = [];
-    if (state.emergency_days_left <= 14) issues.push(`Only ${state.emergency_days_left} days of cash remaining`);
-    if (state.dead_stock_share > 0.6) issues.push(`${Math.round(state.dead_stock_share * 100)}% of inventory is dead stock`);
-    if (state.debt_stress > 0.5) issues.push(`High debt stress at ${Math.round(state.debt_stress * 100)}%`);
-    if (state.customer_trust < 0.5) issues.push(`Customer trust is low at ${Math.round(state.customer_trust * 100)}%`);
-    
-    if (issues.length === 0) {
-      return `Week ${week}: Business operations continue. Recovery score: ${Math.round(recoveryScore)}%. Choose your next strategic action.`;
-    }
-    
-    return `Week ${week}: ${issues.join('. ')}. Recovery score: ${Math.round(recoveryScore)}%. What's your next move?`;
-  };
+  // Reset simulation
+  function resetSimulation() {
+    setState({...FM_INITIAL_STATE});
+    setCurrentScenario(FRESHMART_SCENARIOS.start);
+    setWeek(1);
+    setDecisionHistory([]);
+    setPhase("decision");
+    setSelectedOption(null);
+  }
+  
+  const endColor = currentScenario?.type === "success" ? T.green : currentScenario?.type === "failure" ? T.red : T.gold;
+  const endLabel = currentScenario?.type === "success" ? "OPTIMAL RECOVERY" : currentScenario?.type === "failure" ? "BUSINESS FAILURE" : "STRUGGLING BUT SURVIVING";
 
-  return(
+  return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      <TopBar label="FRESHMART " sub="DYNAMIC SIMULATION" onBack={onBack} right={
+      <TopBar label="FRESHMART " sub="BRANCHING SIMULATION" onBack={onBack} right={
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <Tag color={DC.SEED}>SEED</Tag>
-          <button onClick={()=>{setState({...FM_INITIAL_STATE});setPrevWeekState(null);setWeek(1);setPhase("decision");setChosen(null);setHov(null);setLog([]);setDelayedEffects([]);}} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
+          <button onClick={resetSimulation} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
         </div>
       }/>
       <div style={{height:3,background:T.muted,flexShrink:0}}><div style={{height:"100%",width:`${Math.min(100,recoveryScore)}%`,background:T.gold,transition:"width .6s ease"}}/></div>
-      <div style={{background:T.surf2,borderBottom:`1px solid ${T.border}`,padding:"5px 28px",display:"flex",gap:16,alignItems:"center",flexShrink:0}}>
-        <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3}}>RECOVERY SCORE</div>
-        <div style={{fontFamily:T.mono,fontSize:12,color:T.gold,fontWeight:700}}>{Math.round(recoveryScore)}%</div>
-        <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,marginLeft:"auto"}}>WEEK {week}</div>
-      </div>
-
-      <div ref={topRef} style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden",minHeight:0}}>
-        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"28px 28px"}}>
-
-          {/* ── WARNING BADGE ── */}
-          {state.emergency_days_left <= 7 && <div style={{background:T.redD,border:`1px solid ${T.red}44`,padding:"7px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}><span style={{color:T.red}}>⚠</span><span style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:2}}>CRITICAL SITUATION — {state.emergency_days_left} DAYS OF CASH REMAINING</span></div>}
-
-          {/* ── SITUATION DISPLAY ── */}
-          <div style={{marginBottom:20}}>
-            <div style={{fontFamily:T.mono,fontSize:8,color:isEnding?endColor:T.gold,letterSpacing:3,marginBottom:8}}>
-              {isEnding ? `CONCLUSION · ${ending.title.toUpperCase()}` : `WEEK ${week} · BUSINESS STATUS`}
+      
+      <div ref={topRef} style={{flex:1,display:isMobile?"block":"flex",padding:isMobile?"16px 12px":"20px 16px",gap:20,overflowY:"auto"}}>
+        <div style={{flex:1,minWidth:0}}>
+          {phase === "decision" && !isEnding && (
+            <div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>WEEK {week} · SCENARIO</div>
+              <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:24}}>{currentScenario.description}</div>
+              
+              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{currentScenario.options.length} OPTIONS AVAILABLE</div>
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {currentScenario.options.map((option, i) => (
+                  <div key={option.id} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"18px 20px",cursor:"pointer",transition:"all .15s"}} onClick={() => handleOptionSelect(option)}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:12}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:2,marginBottom:4}}>OPTION {i + 1}</div>
+                        <div style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.5,fontWeight:600}}>{option.label}</div>
+                      </div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,whiteSpace:"nowrap"}}>SELECT →</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{background:T.surf,border:`1px solid ${isEnding?endColor+"33":T.border}`,padding:"18px 20px"}}>
-              <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.85}}>
-                {getSituationText()}
-              </p>
-            </div>
-          </div>
-
-          {/* ══════════════════════════════════════════════════════
-              ENDING REACHED DIRECTLY
-          ══════════════════════════════════════════════════════ */}
-          {showEndingDirect&&(
-            <div style={{animation:"fadeUp .4s both"}}>
-              <div style={{background:`${endColor}0a`,border:`2px solid ${endColor}44`,padding:"22px 22px",marginBottom:18}}>
-                <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:8}}>
-                  {endLabel}
+          )}
+          
+          {phase === "result" && selectedOption && (
+            <div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:10}}>DECISION MADE</div>
+              <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:20}}>{selectedOption.label}</div>
+              
+              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{selectedOption.id.toUpperCase()} · WEEK {week}</div>
+              <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
+                <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>IMPACT ANALYSIS</div>
+                <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
+                  Your decision has been implemented. Review the state changes and continue to the next scenario.
                 </div>
-                <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{ending.title}</div>
-                <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{ending.text}</pre>
-                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Final Recovery Score: {Math.round(recoveryScore)}%</div>
+              </div>
+              
+              <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO NEXT SCENARIO →</button>
+            </div>
+          )}
+          
+          {isEnding && (
+            <div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:10}}>{endLabel}</div>
+              <div style={{background:T.surf,border:`1px solid ${endColor}`,padding:"24px 26px",marginBottom:20}}>
+                <div style={{fontFamily:T.sans,fontSize:15,color:endColor,fontWeight:700,marginBottom:12}}>{currentScenario.type === "success" ? "FreshMart Recovered!" : currentScenario.type === "failure" ? "FreshMart Failed" : "FreshMart Survives"}</div>
+                <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{currentScenario.description}</pre>
+                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Week {week} · Recovery Score: {Math.round(recoveryScore)}%</div>
               </div>
               <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
             </div>
           )}
 
-          {/* ══════════════════════════════════════════════════════
-              CONSEQUENCE PHASE (just made a choice, showing outcome)
-          ══════════════════════════════════════════════════════ */}
-          {phase==="consequence"&&chosen&&(
-            <div style={{marginBottom:20}}>
-              <div style={{background:T.goldD,border:`2px solid ${T.goldM}`,padding:"12px 16px",marginBottom:16}}>
-                <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:4}}>▸ ACTION TAKEN</div>
-                <div style={{fontFamily:T.sans,fontSize:13,color:T.gold,fontWeight:600}}>{chosen.title}</div>
-                <div style={{fontFamily:T.sans,fontSize:11,color:T.gold,marginTop:4,lineHeight:1.5}}>{chosen.description}</div>
-              </div>
-              
-              {/* Show state changes */}
-              {prevWeekState && (
-                <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"18px 20px",marginBottom:14,animation:"fadeUp .35s both"}}>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:8}}>▸ IMMEDIATE IMPACT</div>
-                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                    {Object.keys(state).filter(key => key !== 'cash' && key !== 'monthlySales' && key !== 'inventory' && key !== 'customerCount' && key !== 'staffMorale' && key !== 'ownerStress' && key !== 'rentArrears').map(key => {
-                      const prev = prevWeekState[key];
-                      const curr = state[key];
-                      if (prev !== curr) {
-                        const meta = FM_STATE_META[key];
-                        const change = curr - prev;
-                        const isPositive = meta.good === "high" ? change > 0 : change < 0;
-                        const color = isPositive ? T.green : T.red;
-                        return (
-                          <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <span style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>{meta.icon} {meta.label}</span>
-                            <span style={{fontFamily:T.mono,fontSize:9,color,fontWeight:700}}>
-                              {change > 0 ? "+" : ""}{meta.fmt === "pct" ? `${Math.round(change * 100)}%` : meta.fmt === "money" ? `PKR ${fmtMoney(change)}` : change}
-                            </span>
-                          </div>
-                        );
-                      }
-                      return null;
-                    })}
-                  </div>
-                </div>
-              )}
-              
-              {/* Ending panel */}
-              {isEnding && (
-                <div style={{animation:"fadeUp .4s .2s both"}}>
-                  <div style={{background:`${endColor}0a`,border:`2px solid ${endColor}44`,padding:"22px 22px",marginBottom:18}}>
-                    <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:8}}>
-                      {endLabel}
-                    </div>
-                    <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{ending.title}</div>
-                    <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{ending.text}</pre>
-                    <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Final Recovery Score: {Math.round(recoveryScore)}%</div>
-                  </div>
-                  <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
-                </div>
-              )}
-              {!isEnding&&(
-                <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO NEXT WEEK →</button>
-              )}
-            </div>
-          )}
-
-          {/* ══════════════════════════════════════════════════════
-              DECISION PHASE — show action cards
-          ══════════════════════════════════════════════════════ */}
-          {phase==="decision"&&!isEnding&&(
-            <div style={{animation:"fadeUp .3s both"}}>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:10}}>▸ AVAILABLE ACTIONS</div>
+          {decisionHistory.length > 0 && (
+            <div style={{marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:20}}>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>DECISION PATH</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {availableActions.map(action=>(
-                  <div key={action.id} onMouseEnter={()=>setHov(action)} onMouseLeave={()=>setHov(null)} onClick={()=>handleSelect(action)} style={{border:`2px solid ${hov?.id===action.id?T.gold:T.border}`,background:hov?.id===action.id?T.goldD:T.surf,padding:"16px 18px",cursor:"pointer",transition:"all .15s",display:"flex",gap:14,alignItems:"flex-start"}}>
-                    <div style={{width:24,height:24,border:`2px solid ${hov?.id===action.id?T.gold:T.mid}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"border-color .15s",borderRadius:"50%"}}>
-                      <span style={{fontFamily:T.mono,fontSize:10,fontWeight:800,color:hov?.id===action.id?T.gold:T.dim}}>{action.category?.[0]||"A"}</span>
+                {decisionHistory.map((decision, i) => (
+                  <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                    <div style={{width:16,height:16,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span></div>
+                    <div>
+                      <div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{decision.optionLabel}</div>
+                      <div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Week {decision.week}</div>
                     </div>
-                    <div style={{flex:1}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-                        <div style={{fontFamily:T.sans,fontSize:14,color:hov?.id===action.id?T.txt:"#ddd",fontWeight:600}}>{action.title}</div>
-                        {action.category && <span style={{fontFamily:T.mono,fontSize:7,color:T.gold,background:`${T.gold}12`,padding:"2px 6px",letterSpacing:1}}>{action.category}</span>}
-                      </div>
-                      <div style={{fontFamily:T.sans,fontSize:12,color:"#999",lineHeight:1.55}}>{action.description}</div>
-                    </div>
-                    <span style={{fontFamily:T.mono,fontSize:10,color:T.gold,opacity:hov?.id===action.id?1:0,transition:"opacity .15s",flexShrink:0,marginTop:2}}>→</span>
                   </div>
                 ))}
               </div>
-              {availableActions.length === 0 && (
-                <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",textAlign:"center"}}>
-                  <div style={{fontFamily:T.mono,fontSize:10,color:T.dim}}>No actions available. The situation may require different conditions.</div>
-                </div>
-              )}
             </div>
           )}
-
-          {/* Action log */}
-          {log.length>0&&<div style={{marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:20}}>
-            <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>ACTION HISTORY</div>
-            {log.map((e,i)=>(
-              <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                <div style={{width:16,height:16,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span></div>
-                <div><div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{e.action}</div><div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Week {e.week}</div></div>
-              </div>
-            ))}
-          </div>}
-
         </div>
 
-        {/* Stats sidebar */}
         <div style={{width:isMobile?"100%":268,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?"16px 12px":"20px 16px",flexShrink:0}}>
-          <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS DASHBOARD</div>
+          <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS METRICS</div>
           
-          {/* Key State Variables */}
           {[
             {key: "cash_on_hand", label: "Cash on Hand", icon: "💰", fmt: "money"},
             {key: "emergency_days_left", label: "Days Left", icon: "⏰", fmt: "num"},
@@ -1602,25 +1731,15 @@ function FreshMartSim({onBack,onComplete}){
             {key: "customer_trust", label: "Customer Trust", icon: "🤝", fmt: "pct"}
           ].map(({key, label, icon, fmt, custom}) => {
             const value = custom !== undefined ? custom : state[key];
-            const prevValue = prevWeekState?.[key];
             const meta = FM_STATE_META[key];
-            const isPositive = meta?.good === "high" ? value > prevValue : value < prevValue;
-            const delta = prevValue !== undefined ? value - prevValue : 0;
             
             return(
               <div key={key} style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"9px 12px",marginBottom:6}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{icon} {label}</span>
-                  <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <span style={{fontFamily:T.mono,fontSize:9,color:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,fontWeight:700}}>
-                      {fmt === "money" ? `PKR ${fmtMoney(value)}` : fmt === "pct" ? `${Math.round(value * 100)}%` : value}
-                    </span>
-                    {delta !== 0 && (
-                      <span style={{fontFamily:T.mono,fontSize:7,color:isPositive?T.green:T.red,background:isPositive?`${T.green}18`:`${T.red}18`,padding:"0 4px"}}>
-                        {delta > 0 ? "+" : ""}{fmt === "money" ? fmtMoney(delta) : fmt === "pct" ? `${Math.round(delta * 100)}%` : delta}
-                      </span>
-                    )}
-                  </div>
+                  <span style={{fontFamily:T.mono,fontSize:9,color:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,fontWeight:700}}>
+                    {fmt === "money" ? `PKR ${fmtMoney(value)}` : fmt === "pct" ? `${Math.round(value * 100)}%` : value}
+                  </span>
                 </div>
                 {fmt === "pct" && (
                   <div style={{height:3,background:T.muted,marginTop:4}}>
@@ -1631,31 +1750,9 @@ function FreshMartSim({onBack,onComplete}){
             );
           })}
           
-          {/* Breakeven Status */}
-          <div style={{background:T.surf2,border:`1px solid ${state.monthlySales>=RENT?"#3DEB8A33":"#FF525233"}`,padding:"10px 12px",marginTop:4}}>
-            <div style={{display:"flex",justifyContent:"space-between"}}>
-              <span style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>BREAKEVEN</span>
-              <span style={{fontFamily:T.mono,fontSize:9,fontWeight:700,color:state.monthlySales>=RENT?T.green:T.red}}>{state.monthlySales>=RENT?"✓ ABOVE":"✗ BELOW"}</span>
-            </div>
-            <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginTop:2}}>Gap vs rent: <span style={{color:state.monthlySales>=RENT?T.green:T.red}}>{state.monthlySales>=RENT?"+":"-"}PKR {fmtMoney(Math.abs(state.monthlySales-RENT))}</span></div>
+          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
+            💡 Each decision shapes the future path. Choose carefully.
           </div>
-          
-          {/* Delayed Effects Queue */}
-          {delayedEffects.length > 0 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.gold}44`,padding:"10px 12px",marginTop:4}}>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:6}}>PENDING EFFECTS</div>
-              {delayedEffects.slice(0, 3).map((effect, i) => (
-                <div key={i} style={{fontFamily:T.mono,fontSize:7,color:T.dim,marginBottom:2}}>
-                  Week {effect.week}: {effect.change} {effect.var}
-                </div>
-              ))}
-              {delayedEffects.length > 3 && (
-                <div style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>+{delayedEffects.length - 3} more...</div>
-              )}
-            </div>
-          )}
-          
-          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>💡 Actions unlock based on business conditions. Choose wisely.</div>
         </div>
       </div>
     </div>
