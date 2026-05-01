@@ -78,6 +78,11 @@ const FM_INITIAL_STATE = {
   loan_balance: 0,
   emergency_days_left: 20, // Days until cash runs out
   
+  // Action tracking
+  used_actions: [], // Track actions that have been used
+  unlocked_actions: [], // Track actions that have been unlocked through decisions
+  action_cooldowns: {}, // Track cooldown periods for actions
+  
   // Commercial performance
   price_index_vs_market: 1.0, // 1.0 = market price
   demand_level: 0.7, // 0-1 scale
@@ -163,6 +168,7 @@ const ACTION_CARDS = {
     title: "Apply Pareto Principle",
     category: "Operations",
     description: "Focus on 20% of products that generate 80% of revenue. Liquidate slow-moving inventory.",
+    one_time: true, // Can only be used once
     eligibility: {
       conditions: [
         {var: "dead_stock_share", operator: ">=", value: 0.4},
@@ -172,6 +178,7 @@ const ACTION_CARDS = {
         {var: "pos_installed", operator: "==", value: true}
       ]
     },
+    unlocks: ["pos_installation", "supplier_negotiation_pareto"], // Actions that become available after this
     effects: {
       immediate: [
         {var: "fast_moving_share", change: "+0.3"},
@@ -347,27 +354,97 @@ const ACTION_CARDS = {
     }
   },
   
-  // 7. Install POS
+  // 7. Install POS (requires Pareto or high data visibility)
   install_pos: {
     id: "install_pos",
+    requires_unlock: true, // Must be unlocked
     title: "Install POS System",
     category: "Operations",
-    description: "Implement point-of-sale system for better data visibility and control.",
+    description: "Install point-of-sale system for real-time data visibility and inventory tracking.",
+    one_time: true,
     eligibility: {
       conditions: [
-        {var: "pos_installed", operator: "==", value: false},
-        {var: "cash_on_hand", operator: ">=", value: 80000}
+        {var: "cash_on_hand", operator: ">=", value: 500000}
+      ]
+    },
+    unlocks: ["data_driven_pricing", "inventory_optimization"],
+    effects: {
+      immediate: [
+        {var: "cash_on_hand", change: "-800000"},
+        {var: "pos_installed", value: true},
+        {var: "data_visibility", change: "+0.6"},
+        {var: "execution_speed", change: "+0.2"}
+      ]
+    }
+  },
+  
+  // 8. Supplier Negotiation (Pareto path)
+  supplier_negotiation_pareto: {
+    id: "supplier_negotiation_pareto",
+    requires_unlock: true,
+    title: "Supplier Terms Negotiation",
+    category: "Operations",
+    description: "Negotiate better terms with suppliers using Pareto analysis data.",
+    one_time: true,
+    eligibility: {
+      conditions: [
+        {var: "pareto_score", operator: ">=", value: 0.6},
+        {var: "supplier_relationship", operator: ">=", value: 0.5}
+      ]
+    },
+    unlocks: ["bulk_purchasing", "consignment_stock"],
+    effects: {
+      immediate: [
+        {var: "supplier_relationship", change: "+0.2"},
+        {var: "stock_value", change: "-2000000"},
+        {var: "weekly_burn", change: "-15000"}
+      ]
+    }
+  },
+  
+  // 9. Data-Driven Pricing (requires POS)
+  data_driven_pricing: {
+    id: "data_driven_pricing",
+    requires_unlock: true,
+    title: "Data-Driven Pricing Strategy",
+    category: "Commercial",
+    description: "Use POS data to implement dynamic pricing based on demand patterns.",
+    one_time: true,
+    eligibility: {
+      conditions: [
+        {var: "data_visibility", operator: ">=", value: 0.7},
+        {var: "customer_trust", operator: ">=", value: 0.4}
+      ]
+    },
+    unlocks: ["loyalty_program", "demand_forecasting"],
+    effects: {
+      immediate: [
+        {var: "price_index_vs_market", change: "+0.15"},
+        {var: "demand_level", change: "+0.1"},
+        {var: "conversion_rate", change: "+0.1"}
+      ]
+    }
+  },
+  
+  // 10. Emergency Liquidation (desperation path)
+  emergency_liquidation: {
+    id: "emergency_liquidation",
+    title: "Emergency Liquidation Sale",
+    category: "Survival",
+    description: "Deep discount sale of all inventory to generate immediate cash. Last resort.",
+    one_time: true,
+    eligibility: {
+      conditions: [
+        {var: "emergency_days_left", operator: "<=", value: 7}
       ]
     },
     effects: {
       immediate: [
-        {var: "cash_on_hand", change: "-80000"},
-        {var: "pos_installed", change: true},
-        {var: "data_visibility", change: "+0.6"}
-      ],
-      delayed: [
-        {var: "pareto_score", change: "+0.2", delay: 2},
-        {var: "stockout_rate", change: "-0.1", delay: 1}
+        {var: "cash_on_hand", change: "+4000000"},
+        {var: "stock_value", change: "-15000000"},
+        {var: "customer_trust", change: "-0.3"},
+        {var: "price_index_vs_market", change: "-0.4"},
+        {var: "emergency_actions_used", change: "+1"}
       ]
     }
   },
@@ -1166,6 +1243,16 @@ function FreshMartSim({onBack,onComplete}){
   function applyActionEffects(baseState, action) {
     let newState = { ...baseState };
     
+    // Mark action as used if it's one-time
+    if (action.one_time) {
+      newState.used_actions = [...newState.used_actions, action.id];
+    }
+    
+    // Unlock new actions that this action enables
+    if (action.unlocks) {
+      newState.unlocked_actions = [...new Set([...newState.unlocked_actions, ...action.unlocks])];
+    }
+    
     // Apply immediate effects
     if (action.effects?.immediate) {
       action.effects.immediate.forEach(effect => {
@@ -1220,6 +1307,23 @@ function FreshMartSim({onBack,onComplete}){
     const actions = [];
     
     Object.entries(ACTION_CARDS).forEach(([key, action]) => {
+      // Skip if action is one-time and already used
+      if (action.one_time && currentState.used_actions.includes(key)) {
+        return;
+      }
+      
+      // Skip if action is on cooldown
+      if (currentState.action_cooldowns[key] && currentState.action_cooldowns[key] > 0) {
+        return;
+      }
+      
+      // Check if action is unlocked (either initially available or unlocked through previous actions)
+      const isUnlocked = !action.requires_unlock || currentState.unlocked_actions.includes(key);
+      
+      if (!isUnlocked) {
+        return;
+      }
+      
       if (action.variants) {
         // Handle action families (like pricing_strategy)
         Object.entries(action.variants).forEach(([variantKey, variant]) => {
@@ -2314,44 +2418,131 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
 
   async function downloadCardPng(){
     const node = cardRef.current;
-    if(!node) return false;
-    try{
-      const width = Math.ceil(node.offsetWidth || 900);
-      const height = Math.ceil(node.offsetHeight || 1200);
+    if(!node) {
+      alert("Card element not found. Please try refreshing the page.");
+      return false;
+    }
+    
+    try {
+      // Check if required APIs are available
+      if (!window.XMLSerializer || !document.createElement('canvas').getContext) {
+        throw new Error("Required browser APIs not available");
+      }
+      
+      const rect = node.getBoundingClientRect();
+      const width = Math.max(900, Math.ceil(rect.width));
+      const height = Math.max(1200, Math.ceil(rect.height));
+      
+      // Create SVG with proper namespace and styling
       const cloned = node.cloneNode(true);
+      
+      // Ensure all styles are inline
+      const computedStyles = window.getComputedStyle(node);
+      Array.from(computedStyles).forEach(prop => {
+        cloned.style[prop] = computedStyles[prop];
+      });
+      
+      // Recursively inline styles for all child elements
+      function inlineStyles(element) {
+        const children = element.children;
+        for (let child of children) {
+          const styles = window.getComputedStyle(child);
+          Array.from(styles).forEach(prop => {
+            child.style[prop] = styles[prop];
+          });
+          inlineStyles(child);
+        }
+      }
+      inlineStyles(cloned);
+      
       const serialized = new XMLSerializer().serializeToString(cloned);
+      
+      // Create SVG with proper dimensions and background
       const svg = `
-        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">
-          <foreignObject width="100%" height="100%">${serialized}</foreignObject>
+        <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">
+          <rect width="100%" height="100%" fill="#ffffff"/>
+          <foreignObject width="100%" height="100%">
+            <div xmlns="http://www.w3.org/1999/xhtml" style="font-family: system-ui, -apple-system, sans-serif;">
+              ${serialized}
+            </div>
+          </foreignObject>
         </svg>
       `;
+      
       const blob = new Blob([svg], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
+      
+      // Load the SVG as an image
       const img = new Image();
-      img.decoding = "async";
-      await new Promise((resolve,reject)=>{
-        img.onload = resolve;
-        img.onerror = reject;
+      img.crossOrigin = "anonymous";
+      
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error("Image loading timeout"));
+        }, 10000);
+        
+        img.onload = () => {
+          clearTimeout(timeout);
+          resolve();
+        };
+        
+        img.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(new Error("Failed to load SVG as image: " + error));
+        };
+        
         img.src = url;
       });
-      const scale = 2;
+      
+      // Create canvas and draw
       const canvas = document.createElement("canvas");
+      const scale = 2;
       canvas.width = width * scale;
       canvas.height = height * scale;
+      
       const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        throw new Error("Could not get canvas context");
+      }
+      
       ctx.scale(scale, scale);
       ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0,0,width,height);
-      ctx.drawImage(img,0,0,width,height);
+      ctx.fillRect(0, 0, width, height);
+      
+      // Draw the image
+      ctx.drawImage(img, 0, 0, width, height);
+      
+      // Clean up
       URL.revokeObjectURL(url);
+      
+      // Download the image
+      const dataUrl = canvas.toDataURL("image/png", 0.95);
       const a = document.createElement("a");
-      a.href = canvas.toDataURL("image/png");
-      a.download = `ca-arena-${(company||"case").toLowerCase().replace(/[^a-z0-9]+/g,"-")}-linkedin-card.png`;
+      a.href = dataUrl;
+      a.download = `ca-arena-${(company || "case").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-linkedin-card.png`;
+      document.body.appendChild(a);
       a.click();
+      document.body.removeChild(a);
+      
       return true;
-    }catch(e){
-      console.warn("Card download failed:", e);
-      alert("Could not generate PNG in this browser. Please use a screenshot as fallback.");
+      
+    } catch (error) {
+      console.error("Card download failed:", error);
+      
+      // Provide specific error messages
+      let errorMessage = "Could not generate PNG. ";
+      
+      if (error.message.includes("timeout")) {
+        errorMessage += "The generation took too long. Try again with a simpler card.";
+      } else if (error.message.includes("canvas")) {
+        errorMessage += "Your browser doesn't support canvas operations.";
+      } else if (error.message.includes("SVG") || error.message.includes("image")) {
+        errorMessage += "SVG to image conversion failed. Try using a different browser.";
+      } else {
+        errorMessage += "Please try taking a screenshot instead.";
+      }
+      
+      alert(errorMessage + "\n\nTip: You can take a screenshot of the card for sharing on LinkedIn.");
       return false;
     }
   }
@@ -2369,7 +2560,7 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
     synopsis,
     ``,
     isSimResult
-      ? `🔀 Simulation outcome: ${displayGrade} — ${simResult.log?.length||0} decisions across ${simResult.log?.[simResult.log.length-1]?.month||"?"} months`
+      ? `🔀 Simulation outcome: ${displayGrade} — ${simResult.log?.length||0} decisions across ${simResult.log?.[simResult.log.length-1]?.week||"?"} weeks`
       : `📊 Result: ${displayPct}% · ${displayGrade} · ${optimalCount}/${topAnswers.length} optimal decisions`,
     ``,
     `🧠 CA concepts examined:`,
@@ -2384,7 +2575,7 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
         ].join("\n")
       : isSimResult&&simResult?.log
       ? [`🔀 Path taken:`,
-         ...(simResult.log.slice(0,5).map((e,i)=>`   ${i+1}. [M${e.month}] ${e.label}`)),
+         ...(simResult.log.slice(0,5).map((e,i)=>`   ${i+1}. [W${e.week}] ${e.action}`)),
         ].join("\n")
       : "",
     ``,
