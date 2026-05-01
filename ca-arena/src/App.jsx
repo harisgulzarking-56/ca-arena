@@ -61,20 +61,424 @@ input:focus,button:focus{outline:none;}
 /* ═══════════════════════════════════════════════════════════════════
    ── FRESHMART BRANCHING SIMULATION DATA ──
 ═══════════════════════════════════════════════════════════════════ */
-const FM_INITIAL = {
-  cash:2000000, monthlySales:280000, inventory:22000000,
-  customerCount:140, staffMorale:45, ownerStress:82, rentArrears:0,
-};
+/* ═══════════════════════════════════════════════════════════════════
+   DYNAMIC STATE-BASED FRESHMART SIMULATION
+═══════════════════════════════════════════════════════════════════ */
+
 const RENT = 400000;
-const FM_STAT_META = {
-  cash:         {label:"Liquid Cash",     fmt:"money", icon:"💰", good:"high"},
-  monthlySales: {label:"Monthly Sales",   fmt:"money", icon:"📈", good:"high"},
-  inventory:    {label:"Inventory Value", fmt:"money", icon:"📦", good:"mid"},
-  customerCount:{label:"Daily Footfall",  fmt:"num",   icon:"👥", good:"high"},
-  staffMorale:  {label:"Staff Morale",    fmt:"pct",   icon:"😐", good:"high"},
-  ownerStress:  {label:"Owner Stress",    fmt:"pct",   icon:"😰", good:"low"},
+const WEEKLY_BURN = 100000; // Approximate weekly cash burn
+
+// Comprehensive state variables
+const FM_INITIAL_STATE = {
+  // Cash & survival
+  cash_on_hand: 2000000,
+  weekly_burn: WEEKLY_BURN,
+  overdue_payables: 0,
+  rent_due: RENT,
+  loan_balance: 0,
+  emergency_days_left: 20, // Days until cash runs out
+  
+  // Commercial performance
+  price_index_vs_market: 1.0, // 1.0 = market price
+  demand_level: 0.7, // 0-1 scale
+  conversion_rate: 0.3, // Footfall to sales conversion
+  customer_trust: 0.6,
+  marketing_effectiveness: 0.4,
+  
+  // Inventory & assortment
+  stock_value: 22000000,
+  fast_moving_share: 0.2, // % of inventory that's fast-moving
+  dead_stock_share: 0.8, // % of inventory that's dead stock
+  stockout_rate: 0.1,
+  assortment_fit: 0.3, // How well assortment matches demand
+  
+  // Operations
+  pareto_score: 0.3, // How well Pareto principle is applied
+  pos_installed: false,
+  data_visibility: 0.2,
+  supplier_relationship: 0.7,
+  landlord_relationship: 0.6,
+  execution_speed: 0.5,
+  
+  // Risk/trajectory
+  debt_stress: 0.0, // Increases with loan balance
+  recovery_momentum: 0.3,
+  time_since_problem_started: 0, // In weeks
+  emergency_actions_used: 0,
+  
+  // Legacy compatibility
+  cash: 2000000,
+  monthlySales: 280000,
+  inventory: 22000000,
+  customerCount: 140,
+  staffMorale: 45,
+  ownerStress: 82,
+  rentArrears: 0,
 };
-const FM_STAT_KEYS = ["cash","monthlySales","inventory","customerCount","staffMorale","ownerStress"];
+
+const FM_STATE_META = {
+  cash_on_hand: {label:"Cash on Hand", fmt:"money", icon:"💰", good:"high", unit:"PKR"},
+  weekly_burn: {label:"Weekly Burn", fmt:"money", icon:"🔥", good:"low", unit:"PKR"},
+  overdue_payables: {label:"Overdue Payables", fmt:"money", icon:"📋", good:"low", unit:"PKR"},
+  rent_due: {label:"Rent Due", fmt:"money", icon:"🏠", good:"low", unit:"PKR"},
+  loan_balance: {label:"Loan Balance", fmt:"money", icon:"💳", good:"low", unit:"PKR"},
+  emergency_days_left: {label:"Days Left", fmt:"num", icon:"⏰", good:"high", unit:"days"},
+  
+  price_index_vs_market: {label:"Price vs Market", fmt:"pct", icon:"🏷️", good:"mid", unit:"index"},
+  demand_level: {label:"Demand Level", fmt:"pct", icon:"📊", good:"high", unit:"level"},
+  conversion_rate: {label:"Conversion Rate", fmt:"pct", icon:"🔄", good:"high", unit:"rate"},
+  customer_trust: {label:"Customer Trust", fmt:"pct", icon:"🤝", good:"high", unit:"trust"},
+  marketing_effectiveness: {label:"Marketing Effectiveness", fmt:"pct", icon:"📢", good:"high", unit:"effectiveness"},
+  
+  stock_value: {label:"Stock Value", fmt:"money", icon:"📦", good:"mid", unit:"PKR"},
+  fast_moving_share: {label:"Fast-Moving Stock", fmt:"pct", icon:"⚡", good:"high", unit:"share"},
+  dead_stock_share: {label:"Dead Stock", fmt:"pct", icon:"🗑️", good:"low", unit:"share"},
+  stockout_rate: {label:"Stockout Rate", fmt:"pct", icon:"❌", good:"low", unit:"rate"},
+  assortment_fit: {label:"Assortment Fit", fmt:"pct", icon:"🎯", good:"high", unit:"fit"},
+  
+  pareto_score: {label:"Pareto Score", fmt:"pct", icon:"📈", good:"high", unit:"score"},
+  data_visibility: {label:"Data Visibility", fmt:"pct", icon:"👁️", good:"high", unit:"visibility"},
+  supplier_relationship: {label:"Supplier Relations", fmt:"pct", icon:"🤝", good:"high", unit:"relationship"},
+  landlord_relationship: {label:"Landlord Relations", fmt:"pct", icon:"🏢", good:"high", unit:"relationship"},
+  execution_speed: {label:"Execution Speed", fmt:"pct", icon:"⚡", good:"high", unit:"speed"},
+  
+  debt_stress: {label:"Debt Stress", fmt:"pct", icon:"😰", good:"low", unit:"stress"},
+  recovery_momentum: {label:"Recovery Momentum", fmt:"pct", icon:"🚀", good:"high", unit:"momentum"},
+  time_since_problem_started: {label:"Weeks Passed", fmt:"num", icon:"📅", good:"low", unit:"weeks"},
+  
+  // Legacy compatibility
+  cash: {label:"Liquid Cash", fmt:"money", icon:"💰", good:"high"},
+  monthlySales: {label:"Monthly Sales", fmt:"money", icon:"📈", good:"high"},
+  inventory: {label:"Inventory Value", fmt:"money", icon:"📦", good:"mid"},
+  customerCount: {label:"Daily Footfall", fmt:"num", icon:"👥", good:"high"},
+  staffMorale: {label:"Staff Morale", fmt:"pct", icon:"😐", good:"high"},
+  ownerStress: {label:"Owner Stress", fmt:"pct", icon:"😰", good:"low"},
+};
+
+// Action cards with eligibility conditions and effects
+const ACTION_CARDS = {
+  // 1. Apply Pareto
+  apply_pareto: {
+    id: "apply_pareto",
+    title: "Apply Pareto Principle",
+    category: "Operations",
+    description: "Focus on 20% of products that generate 80% of revenue. Liquidate slow-moving inventory.",
+    eligibility: {
+      conditions: [
+        {var: "dead_stock_share", operator: ">=", value: 0.4},
+        {operator: "or"},
+        {var: "data_visibility", operator: ">=", value: 0.3},
+        {operator: "or"},
+        {var: "pos_installed", operator: "==", value: true}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "fast_moving_share", change: "+0.3"},
+        {var: "dead_stock_share", change: "-0.3"},
+        {var: "pareto_score", change: "+0.4"},
+        {var: "cash_on_hand", change: "+2000000"}, // From liquidation
+        {var: "stock_value", change: "-6000000"},
+        {var: "recovery_momentum", change: "+0.2"}
+      ],
+      delayed: [
+        {var: "conversion_rate", change: "+0.1", delay: 2},
+        {var: "customer_trust", change: "-0.05", delay: 1} // Slight trust loss from reduced variety
+      ],
+      risks: [
+        {condition: {var: "assortment_fit", operator: "<", value: 0.3}, effect: {var: "demand_level", change: "-0.1"}}
+      ]
+    }
+  },
+  
+  // 2. Pricing Strategy Family
+  pricing_strategy: {
+    variants: {
+      raise_prices: {
+        title: "Raise Prices",
+        description: "Increase prices by 15-20% across the board to improve margins.",
+        eligibility: {
+          conditions: [
+            {var: "price_index_vs_market", operator: "<", value: 0.95},
+            {var: "customer_trust", operator: ">=", value: 0.5}
+          ]
+        },
+        effects: {
+          immediate: [
+            {var: "price_index_vs_market", change: "+0.15"},
+            {var: "demand_level", change: "-0.2"},
+            {var: "customer_trust", change: "-0.1"}
+          ]
+        }
+      },
+      normalize_prices: {
+        title: "Normalize to Market",
+        description: "Adjust prices to match market rates after previous increases.",
+        eligibility: {
+          conditions: [
+            {var: "price_index_vs_market", operator: ">", value: 1.1},
+            {var: "customer_trust", operator: "<", value: 0.5}
+          ]
+        },
+        effects: {
+          immediate: [
+            {var: "price_index_vs_market", change: "-0.1"},
+            {var: "demand_level", change: "+0.15"},
+            {var: "customer_trust", change: "+0.1"}
+          ]
+        }
+      },
+      cut_below_market: {
+        title: "Cut Below Market",
+        description: "Aggressive pricing to build customer base quickly.",
+        eligibility: {
+          conditions: [
+            {var: "cash_on_hand", operator: ">=", value: 1000000},
+            {var: "emergency_days_left", operator: ">", value: 8}
+          ]
+        },
+        effects: {
+          immediate: [
+            {var: "price_index_vs_market", change: "-0.2"},
+            {var: "demand_level", change: "+0.3"},
+            {var: "conversion_rate", change: "+0.2"},
+            {var: "weekly_burn", change: "+50000"} // Higher burn from lower margins
+          ]
+        }
+      }
+    }
+  },
+  
+  // 3. Negotiate with Suppliers
+  negotiate_suppliers: {
+    id: "negotiate_suppliers",
+    title: "Negotiate with Suppliers",
+    category: "Financial",
+    description: "Seek better terms, returns on slow stock, or extended payment terms.",
+    eligibility: {
+      conditions: [
+        {var: "supplier_relationship", operator: ">=", value: 0.4},
+        {operator: "or"},
+        {var: "overdue_payables", operator: ">", value: 0}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "overdue_payables", change: "-200000"},
+        {var: "supplier_relationship", change: "+0.1"}
+      ],
+      delayed: [
+        {var: "stock_value", change: "-2000000", delay: 1}, // Returns processed
+        {var: "cash_on_hand", change: "+800000", delay: 1}
+      ],
+      risks: [
+        {condition: {var: "supplier_relationship", operator: "<", value: 0.5}, 
+         effect: {var: "supplier_relationship", change: "-0.2", failure_chance: 0.3}}
+      ]
+    }
+  },
+  
+  // 4. Landlord Negotiation
+  negotiate_landlord: {
+    id: "negotiate_landlord",
+    title: "Approach Landlord for Rent Deferral",
+    category: "Financial",
+    description: "Request temporary rent reduction or payment deferral.",
+    eligibility: {
+      conditions: [
+        {var: "rent_due", operator: ">", value: 300000},
+        {var: "landlord_relationship", operator: ">=", value: 0.5},
+        {var: "transparency", operator: "==", value: true}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "rent_due", change: "-200000"},
+        {var: "landlord_relationship", change: "+0.1"}
+      ],
+      delayed: [
+        {var: "rent_due", change: "+400000", delay: 4} // Deferred rent becomes due
+      ]
+    }
+  },
+  
+  // 5. Emergency Liquidation
+  emergency_liquidation: {
+    id: "emergency_liquidation",
+    title: "Emergency Liquidation",
+    category: "Crisis",
+    description: "Deep discount sale (40-50% off) to generate immediate cash.",
+    eligibility: {
+      conditions: [
+        {var: "emergency_days_left", operator: "<=", value: 14},
+        {var: "dead_stock_share", operator: ">", value: 0.3}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "cash_on_hand", change: "+3000000"},
+        {var: "stock_value", change: "-7000000"},
+        {var: "dead_stock_share", change: "-0.4"},
+        {var: "emergency_actions_used", change: "+1"},
+        {var: "customer_trust", change: "-0.1"}
+      ]
+    }
+  },
+  
+  // 6. Financing Options
+  take_loan: {
+    id: "take_loan",
+    title: "Take Business Loan",
+    category: "Financial",
+    description: "Secure PKR 5M loan at 22% interest for restructuring capital.",
+    eligibility: {
+      conditions: [
+        {var: "loan_balance", operator: "==", value: 0},
+        {var: "debt_stress", operator: "<", value: 0.3}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "cash_on_hand", change: "+5000000"},
+        {var: "loan_balance", change: "+5000000"},
+        {var: "debt_stress", change: "+0.4"},
+        {var: "weekly_burn", change: "+91000"} // Monthly interest
+      ]
+    }
+  },
+  
+  // 7. Install POS
+  install_pos: {
+    id: "install_pos",
+    title: "Install POS System",
+    category: "Operations",
+    description: "Implement point-of-sale system for better data visibility and control.",
+    eligibility: {
+      conditions: [
+        {var: "pos_installed", operator: "==", value: false},
+        {var: "cash_on_hand", operator: ">=", value: 80000}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "cash_on_hand", change: "-80000"},
+        {var: "pos_installed", change: true},
+        {var: "data_visibility", change: "+0.6"}
+      ],
+      delayed: [
+        {var: "pareto_score", change: "+0.2", delay: 2},
+        {var: "stockout_rate", change: "-0.1", delay: 1}
+      ]
+    }
+  },
+  
+  // 8. Inventory Management
+  restock_variety: {
+    id: "restock_variety",
+    title: "Restock More Variety",
+    category: "Inventory",
+    description: "Expand product range to better match customer preferences.",
+    eligibility: {
+      conditions: [
+        {var: "assortment_fit", operator: "<", value: 0.5},
+        {var: "cash_on_hand", operator: ">=", value: 500000}
+      ]
+    },
+    effects: {
+      immediate: [
+        {var: "stock_value", change: "+2000000"},
+        {var: "assortment_fit", change: "+0.2"},
+        {var: "cash_on_hand", change: "-500000"}
+      ],
+      risks: [
+        {condition: {var: "data_visibility", operator: "<", value: 0.5}, 
+         effect: {var: "dead_stock_share", change: "+0.1"}}
+      ]
+    }
+  }
+};
+
+// Dynamic scoring system
+const calculateRecoveryScore = (state) => {
+  const weights = {
+    cash_stability: 0.25,
+    gross_margin_health: 0.20,
+    inventory_efficiency: 0.15,
+    customer_demand: 0.15,
+    operational_excellence: 0.15,
+    risk_management: 0.10
+  };
+  
+  const scores = {
+    cash_stability: Math.min(1, state.cash_on_hand / 3000000) * (1 - state.debt_stress * 0.5),
+    gross_margin_health: (state.price_index_vs_market * 0.6 + state.demand_level * 0.4),
+    inventory_efficiency: state.fast_moving_share * (1 - state.dead_stock_share) * (1 - state.stockout_rate),
+    customer_demand: state.demand_level * state.customer_trust * state.conversion_rate,
+    operational_excellence: (state.pareto_score * 0.4 + state.data_visibility * 0.3 + state.execution_speed * 0.3),
+    risk_management: (1 - state.debt_stress) * (1 - state.emergency_actions_used * 0.2) * Math.max(0, 1 - state.time_since_problem_started * 0.1)
+  };
+  
+  return Object.entries(weights).reduce((total, [key, weight]) => {
+    return total + (scores[key] || 0) * weight;
+  }, 0) * 100;
+};
+
+// Determine ending based on state
+const determineEnding = (state, week) => {
+  const recoveryScore = calculateRecoveryScore(state);
+  
+  if (state.cash_on_hand <= 0) {
+    return {
+      type: "bad",
+      title: "Business Closure",
+      text: "FreshMart ran out of cash and ceased operations.",
+      score: recoveryScore
+    };
+  }
+  
+  if (state.debt_stress > 0.8 && state.weekly_burn > state.cash_on_hand * 0.1) {
+    return {
+      type: "bad", 
+      title: "Debt Spiral",
+      text: "Unsustainable debt burden led to collapse.",
+      score: recoveryScore
+    };
+  }
+  
+  if (recoveryScore >= 75 && state.cash_on_hand > 1000000) {
+    return {
+      type: "perfect",
+      title: "Optimal Recovery", 
+      text: "FreshMart recovered strongly with sustainable operations.",
+      score: recoveryScore
+    };
+  }
+  
+  if (recoveryScore >= 50) {
+    return {
+      type: "good",
+      title: "Business Stabilized",
+      text: "FreshMart survived but remains fragile.",
+      score: recoveryScore
+    };
+  }
+  
+  if (week >= 20) {
+    return {
+      type: "warn",
+      title: "Extended Crisis",
+      text: "Business survives but struggle continues.",
+      score: recoveryScore
+    };
+  }
+  
+  return null; // Continue simulation
+};
+
+// Legacy compatibility
+const FM_INITIAL = FM_INITIAL_STATE;
+const FM_STAT_META = FM_STATE_META;
+const FM_STAT_KEYS = Object.keys(FM_STATE_META);
 
 function fmtMoney(v){
   const a=Math.abs(v);
@@ -690,117 +1094,280 @@ function AnimStat({value,prevValue,statKey}){
 }
 
 function FreshMartSim({onBack,onComplete}){
-  const [nodeId,setNodeId]=useState("start");
-  const [stats,setStats]=useState({...FM_INITIAL});
-  const [prevStats,setPrevStats]=useState(null);
+  const [state,setState]=useState({...FM_INITIAL_STATE});
+  const [prevWeekState,setPrevWeekState]=useState(null);
   const [phase,setPhase]=useState("decision");
   const [hov,setHov]=useState(null);
   const [chosen,setChosen]=useState(null);
   const [log,setLog]=useState([]);
+  const [week,setWeek]=useState(1);
+  const [availableActions,setAvailableActions]=useState([]);
+  const [delayedEffects,setDelayedEffects]=useState([]);
   const topRef=useRef(null);
   const [isMobile,setIsMobile]=useState(()=>{if(typeof window==="undefined")return false;return window.innerWidth<=900;});
   useEffect(()=>{if(typeof window==="undefined")return;const onResize=()=>setIsMobile(window.innerWidth<=900);onResize();window.addEventListener("resize",onResize);return()=>window.removeEventListener("resize",onResize);},[]);
 
-  const node=Nodes[nodeId];
-  const isEnding=node?.isEnding;
+  // Calculate derived state
+  const recoveryScore = calculateRecoveryScore(state);
+  const ending = determineEnding(state, week);
+  const isEnding = ending !== null;
   
-  function applyImpact(base,imp){
-    const n={...base};
-    Object.entries(imp||{}).forEach(([k,v])=>{if(k in n)n[k]=Math.max(0,n[k]+v);});
-    return n;
+  // Check if action eligibility conditions are met
+  function checkEligibility(conditions, currentState) {
+    if (!conditions || conditions.length === 0) return true;
+    
+    let result = true;
+    let i = 0;
+    
+    while (i < conditions.length) {
+      const condition = conditions[i];
+      
+      if (condition.operator === "or") {
+        // OR operator - evaluate next condition
+        i++;
+        if (i < conditions.length) {
+          const nextResult = checkSingleCondition(conditions[i], currentState);
+          result = result || nextResult;
+        }
+      } else if (condition.var) {
+        // Regular condition
+        const conditionResult = checkSingleCondition(condition, currentState);
+        result = result && conditionResult;
+      }
+      
+      i++;
+    }
+    
+    return result;
   }
-  function handleSelect(choice){
-    if(phase!=="decision" || isEnding || !choice?.next) return;
-    setChosen(choice);
-    const ns=applyImpact(stats,choice.impact);
-    setPrevStats({...stats});
-    setStats(ns);
-    setLog(l=>[...l,{label:choice.label,month:node.month}]);
+  
+  function checkSingleCondition(condition, currentState) {
+    const value = currentState[condition.var];
+    switch (condition.operator) {
+      case ">=": return value >= condition.value;
+      case "<=": return value <= condition.value;
+      case ">": return value > condition.value;
+      case "<": return value < condition.value;
+      case "==": return value === condition.value;
+      case "!=": return value !== condition.value;
+      default: return true;
+    }
+  }
+  
+  // Apply action effects to state
+  function applyActionEffects(baseState, action) {
+    let newState = { ...baseState };
+    
+    // Apply immediate effects
+    if (action.effects?.immediate) {
+      action.effects.immediate.forEach(effect => {
+        const change = parseFloat(effect.change);
+        if (effect.change.startsWith('+')) {
+          newState[effect.var] = Math.max(0, newState[effect.var] + change);
+        } else if (effect.change.startsWith('-')) {
+          newState[effect.var] = Math.max(0, newState[effect.var] + change);
+        } else {
+          newState[effect.var] = effect.value;
+        }
+      });
+    }
+    
+    // Add delayed effects to queue
+    if (action.effects?.delayed) {
+      const newDelayed = action.effects.delayed.map(effect => ({
+        ...effect,
+        week: week + effect.delay,
+        actionId: action.id
+      }));
+      setDelayedEffects(prev => [...prev, ...newDelayed]);
+    }
+    
+    return newState;
+  }
+  
+  // Process delayed effects at week transition
+  function processDelayedEffects(currentState, currentWeek) {
+    let newState = { ...currentState };
+    const remaining = delayedEffects.filter(effect => effect.week !== currentWeek);
+    
+    delayedEffects.forEach(effect => {
+      if (effect.week === currentWeek) {
+        const change = parseFloat(effect.change);
+        if (effect.change.startsWith('+')) {
+          newState[effect.var] = Math.max(0, newState[effect.var] + change);
+        } else if (effect.change.startsWith('-')) {
+          newState[effect.var] = Math.max(0, newState[effect.var] + change);
+        } else {
+          newState[effect.var] = effect.value;
+        }
+      }
+    });
+    
+    setDelayedEffects(remaining);
+    return newState;
+  }
+  
+  // Update available actions based on current state
+  function updateAvailableActions(currentState) {
+    const actions = [];
+    
+    Object.entries(ACTION_CARDS).forEach(([key, action]) => {
+      if (action.variants) {
+        // Handle action families (like pricing_strategy)
+        Object.entries(action.variants).forEach(([variantKey, variant]) => {
+          if (checkEligibility(variant.eligibility?.conditions, currentState)) {
+            actions.push({ ...variant, id: variantKey, family: key });
+          }
+        });
+      } else {
+        // Handle single actions
+        if (checkEligibility(action.eligibility?.conditions, currentState)) {
+          actions.push(action);
+        }
+      }
+    });
+    
+    setAvailableActions(actions);
+  }
+  
+  function handleSelect(action) {
+    if (phase !== "decision" || isEnding) return;
+    setChosen(action);
+    setPrevWeekState({ ...state });
+    
+    // Apply action effects
+    const newState = applyActionEffects(state, action);
+    setState(newState);
+    
+    // Add to log
+    setLog(l => [...l, { action: action.title, week }]);
     setPhase("consequence");
-    setTimeout(()=>topRef.current?.scrollIntoView({behavior:"smooth"}),100);
+    setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
-  function handleContinue(){
-    if(isEnding){
-      onComplete&&onComplete({log,stats,endingType:node.endingType,endingTitle:node.endingTitle,keyInsights:node.keyInsights,caseCompany:"FreshMart Grocery",caseDiff:"SEED",caseType:"scenario",caseId:"GRC-SEED-01"});
+  
+  function handleContinue() {
+    if (isEnding) {
+      onComplete && onComplete({
+        log,
+        state,
+        endingType: ending.type,
+        endingTitle: ending.title,
+        recoveryScore,
+        caseCompany: "FreshMart Grocery",
+        caseDiff: "SEED",
+        caseType: "scenario",
+        caseId: "GRC-SEED-01"
+      });
       return;
     }
-    if(!chosen?.next) return;
-    // Navigate immediately — no timeout
-    setNodeId(chosen.next);
+    
+    // Advance to next week
+    const nextWeek = week + 1;
+    
+    // Process delayed effects
+    let newState = processDelayedEffects(state, nextWeek);
+    
+    // Update time-based variables
+    newState.time_since_problem_started = nextWeek;
+    newState.emergency_days_left = Math.max(0, Math.floor(newState.cash_on_hand / (newState.weekly_burn || WEEKLY_BURN) * 7));
+    
+    // Update legacy compatibility variables
+    newState.cash = newState.cash_on_hand;
+    newState.monthlySales = Math.round(newState.demand_level * 400000); // Base sales adjusted by demand
+    newState.inventory = newState.stock_value;
+    newState.customerCount = Math.round(newState.demand_level * 200);
+    newState.staffMorale = Math.round(newState.recovery_momentum * 100);
+    newState.ownerStress = Math.round((1 - newState.recovery_momentum) * 100);
+    newState.rentArrears = Math.max(0, newState.rent_due - RENT);
+    
+    setState(newState);
+    setWeek(nextWeek);
     setChosen(null);
     setPhase("decision");
     setHov(null);
-    topRef.current?.scrollIntoView({behavior:"smooth"});
+    topRef.current?.scrollIntoView({ behavior: "smooth" });
   }
+  
+  // Update available actions when state changes
+  useEffect(() => {
+    updateAvailableActions(state);
+  }, [state, week]);
 
-  /* ── When we land on an ending node in "decision" phase,
-       immediately show it as a conclusion — no extra click needed ── */
+  /* ── Ending display logic ── */
   const showEndingDirect = phase==="decision" && isEnding;
-  const consequenceNode = phase==="consequence" && chosen?.next ? Nodes[chosen.next] : null;
-  const endColor = node?.endingType==="perfect" ? T.green
-                 : node?.endingType==="good"    ? T.green
-                 : node?.endingType==="warn"    ? T.gold
+  const endColor = ending?.type==="perfect" ? T.green
+                 : ending?.type==="good"    ? T.green
+                 : ending?.type==="warn"    ? T.gold
                  :                                T.red;
-  const endLabel = node?.endingType==="perfect" ? "★ OPTIMAL PATH"
-                 : node?.endingType==="good"    ? "✓ RECOVERED"
-                 : node?.endingType==="warn"    ? "⚠ SURVIVED — BARELY"
+  const endLabel = ending?.type==="perfect" ? "★ OPTIMAL PATH"
+                 : ending?.type==="good"    ? "✓ RECOVERED"
+                 : ending?.type==="warn"    ? "⚠ SURVIVED — BARELY"
                  :                                "✗ BUSINESS FAILED";
-  const previewImp = phase==="decision" && hov ? hov.impact : null;
+  
+  // Generate situation text based on current state
+  const getSituationText = () => {
+    if (isEnding) {
+      return ending.text;
+    }
+    
+    const issues = [];
+    if (state.emergency_days_left <= 14) issues.push(`Only ${state.emergency_days_left} days of cash remaining`);
+    if (state.dead_stock_share > 0.6) issues.push(`${Math.round(state.dead_stock_share * 100)}% of inventory is dead stock`);
+    if (state.debt_stress > 0.5) issues.push(`High debt stress at ${Math.round(state.debt_stress * 100)}%`);
+    if (state.customer_trust < 0.5) issues.push(`Customer trust is low at ${Math.round(state.customer_trust * 100)}%`);
+    
+    if (issues.length === 0) {
+      return `Week ${week}: Business operations continue. Recovery score: ${Math.round(recoveryScore)}%. Choose your next strategic action.`;
+    }
+    
+    return `Week ${week}: ${issues.join('. ')}. Recovery score: ${Math.round(recoveryScore)}%. What's your next move?`;
+  };
 
   return(
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      <TopBar label="FRESHMART " sub="BRANCHING CASE" onBack={onBack} right={
+      <TopBar label="FRESHMART " sub="DYNAMIC SIMULATION" onBack={onBack} right={
         <div style={{display:"flex",gap:10,alignItems:"center"}}>
           <Tag color={DC.SEED}>SEED</Tag>
-          <button onClick={()=>{setNodeId("start");setStats({...FM_INITIAL});setPrevStats(null);setPhase("decision");setChosen(null);setHov(null);setLog([]);}} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
+          <button onClick={()=>{setState({...FM_INITIAL_STATE});setPrevWeekState(null);setWeek(1);setPhase("decision");setChosen(null);setHov(null);setLog([]);setDelayedEffects([]);}} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
         </div>
       }/>
-      <div style={{height:3,background:T.muted,flexShrink:0}}><div style={{height:"100%",width:`${Math.min(100,(node.month/5)*100)}%`,background:T.gold,transition:"width .6s ease"}}/></div>
+      <div style={{height:3,background:T.muted,flexShrink:0}}><div style={{height:"100%",width:`${Math.min(100,recoveryScore)}%`,background:T.gold,transition:"width .6s ease"}}/></div>
       <div style={{background:T.surf2,borderBottom:`1px solid ${T.border}`,padding:"5px 28px",display:"flex",gap:16,alignItems:"center",flexShrink:0}}>
-        {[1,2,3,4,5].map(m=>(
-          <div key={m} style={{display:"flex",alignItems:"center",gap:4}}>
-            <div style={{width:7,height:7,borderRadius:"50%",background:m<=node.month?T.gold:T.muted,opacity:m===node.month?1:m<node.month?.5:.2,boxShadow:m===node.month?`0 0 8px ${T.gold}88`:"none",transition:"all .3s"}}/>
-            <span style={{fontFamily:T.mono,fontSize:7,color:m<=node.month?T.gold:T.muted,letterSpacing:1}}>M{m}</span>
-          </div>
-        ))}
-        <span style={{fontFamily:T.mono,fontSize:9,color:T.dim,marginLeft:"auto"}}>MONTH {node.month}</span>
+        <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3}}>RECOVERY SCORE</div>
+        <div style={{fontFamily:T.mono,fontSize:12,color:T.gold,fontWeight:700}}>{Math.round(recoveryScore)}%</div>
+        <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,marginLeft:"auto"}}>WEEK {week}</div>
       </div>
 
       <div ref={topRef} style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",overflow:isMobile?"visible":"hidden",minHeight:0}}>
         <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"28px 28px"}}>
 
           {/* ── WARNING BADGE ── */}
-          {node.isWarning&&<div style={{background:T.redD,border:`1px solid ${T.red}44`,padding:"7px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}><span style={{color:T.red}}>⚠</span><span style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:2}}>CRITICAL SITUATION — BUSINESS AT RISK</span></div>}
+          {state.emergency_days_left <= 7 && <div style={{background:T.redD,border:`1px solid ${T.red}44`,padding:"7px 14px",marginBottom:14,display:"flex",gap:8,alignItems:"center"}}><span style={{color:T.red}}>⚠</span><span style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:2}}>CRITICAL SITUATION — {state.emergency_days_left} DAYS OF CASH REMAINING</span></div>}
 
-          {/* ── NODE TITLE + SITUATION/NARRATIVE ── */}
+          {/* ── SITUATION DISPLAY ── */}
           <div style={{marginBottom:20}}>
             <div style={{fontFamily:T.mono,fontSize:8,color:isEnding?endColor:T.gold,letterSpacing:3,marginBottom:8}}>
-              {isEnding ? `CONCLUSION · ${node.title.toUpperCase()}` : `MONTH ${node.month} · ${node.title.toUpperCase()}`}
+              {isEnding ? `CONCLUSION · ${ending.title.toUpperCase()}` : `WEEK ${week} · BUSINESS STATUS`}
             </div>
             <div style={{background:T.surf,border:`1px solid ${isEnding?endColor+"33":T.border}`,padding:"18px 20px"}}>
               <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.85}}>
-                {node.situation || node.narrative}
+                {getSituationText()}
               </p>
             </div>
           </div>
 
           {/* ══════════════════════════════════════════════════════
-              ENDING REACHED DIRECTLY (navigated here via continue)
+              ENDING REACHED DIRECTLY
           ══════════════════════════════════════════════════════ */}
           {showEndingDirect&&(
             <div style={{animation:"fadeUp .4s both"}}>
-              {node.narrative&&node.situation&&(
-                <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"18px 20px",marginBottom:16}}>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:8}}>▸ WHAT HAPPENED</div>
-                  <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.8}}>{node.narrative}</p>
-                </div>
-              )}
               <div style={{background:`${endColor}0a`,border:`2px solid ${endColor}44`,padding:"22px 22px",marginBottom:18}}>
                 <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:8}}>
                   {endLabel}
                 </div>
-                <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{node.endingTitle}</div>
-                <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{node.endingText}</pre>
+                <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{ending.title}</div>
+                <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{ending.text}</pre>
+                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Final Recovery Score: {Math.round(recoveryScore)}%</div>
               </div>
               <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
             </div>
@@ -812,77 +1379,97 @@ function FreshMartSim({onBack,onComplete}){
           {phase==="consequence"&&chosen&&(
             <div style={{marginBottom:20}}>
               <div style={{background:T.goldD,border:`2px solid ${T.goldM}`,padding:"12px 16px",marginBottom:16}}>
-                <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:4}}>▸ YOU CHOSE</div>
-                <div style={{fontFamily:T.sans,fontSize:13,color:T.gold,fontWeight:600}}>{chosen.label}</div>
+                <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:4}}>▸ ACTION TAKEN</div>
+                <div style={{fontFamily:T.sans,fontSize:13,color:T.gold,fontWeight:600}}>{chosen.title}</div>
+                <div style={{fontFamily:T.sans,fontSize:11,color:T.gold,marginTop:4,lineHeight:1.5}}>{chosen.description}</div>
               </div>
-              {consequenceNode?.narrative&&(
+              
+              {/* Show state changes */}
+              {prevWeekState && (
                 <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"18px 20px",marginBottom:14,animation:"fadeUp .35s both"}}>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:8}}>▸ WHAT HAPPENED</div>
-                  <p style={{fontFamily:T.sans,fontSize:14,color:"#bbb",lineHeight:1.8}}>{consequenceNode.narrative}</p>
-                </div>
-              )}
-              {/* Ending panel — shown in consequence if the selected path leads to an ending */}
-              {consequenceNode?.isEnding&&(
-                <div style={{animation:"fadeUp .4s .2s both"}}>
-                  <div style={{background:`${consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red}0a`,border:`2px solid ${(consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red)}44`,padding:"22px 22px",marginBottom:18}}>
-                    <div style={{fontFamily:T.mono,fontSize:8,color:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,letterSpacing:3,marginBottom:8}}>
-                      {consequenceNode.endingType==="perfect" ? "★ OPTIMAL PATH" : consequenceNode.endingType==="good" ? "✓ RECOVERED" : consequenceNode.endingType==="warn" ? "⚠ SURVIVED — BARELY" : "✗ BUSINESS FAILED"}
-                    </div>
-                    <div style={{fontFamily:T.serif,fontSize:22,color:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,fontWeight:700,marginBottom:12}}>{consequenceNode.endingTitle}</div>
-                    <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{consequenceNode.endingText}</pre>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:8}}>▸ IMMEDIATE IMPACT</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {Object.keys(state).filter(key => key !== 'cash' && key !== 'monthlySales' && key !== 'inventory' && key !== 'customerCount' && key !== 'staffMorale' && key !== 'ownerStress' && key !== 'rentArrears').map(key => {
+                      const prev = prevWeekState[key];
+                      const curr = state[key];
+                      if (prev !== curr) {
+                        const meta = FM_STATE_META[key];
+                        const change = curr - prev;
+                        const isPositive = meta.good === "high" ? change > 0 : change < 0;
+                        const color = isPositive ? T.green : T.red;
+                        return (
+                          <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                            <span style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>{meta.icon} {meta.label}</span>
+                            <span style={{fontFamily:T.mono,fontSize:9,color,fontWeight:700}}>
+                              {change > 0 ? "+" : ""}{meta.fmt === "pct" ? `${Math.round(change * 100)}%` : meta.fmt === "money" ? `PKR ${fmtMoney(change)}` : change}
+                            </span>
+                          </div>
+                        );
+                      }
+                      return null;
+                    })}
                   </div>
-                  <button onClick={handleContinue} style={{width:"100%",background:consequenceNode.endingType==="perfect"||consequenceNode.endingType==="good"?T.green:consequenceNode.endingType==="warn"?T.gold:T.red,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
                 </div>
               )}
-              {!consequenceNode?.isEnding&&(
-                <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE →</button>
+              
+              {/* Ending panel */}
+              {isEnding && (
+                <div style={{animation:"fadeUp .4s .2s both"}}>
+                  <div style={{background:`${endColor}0a`,border:`2px solid ${endColor}44`,padding:"22px 22px",marginBottom:18}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:8}}>
+                      {endLabel}
+                    </div>
+                    <div style={{fontFamily:T.serif,fontSize:22,color:endColor,fontWeight:700,marginBottom:12}}>{ending.title}</div>
+                    <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{ending.text}</pre>
+                    <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Final Recovery Score: {Math.round(recoveryScore)}%</div>
+                  </div>
+                  <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
+                </div>
+              )}
+              {!isEnding&&(
+                <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO NEXT WEEK →</button>
               )}
             </div>
           )}
 
           {/* ══════════════════════════════════════════════════════
-              DECISION PHASE — show choices
+              DECISION PHASE — show action cards
           ══════════════════════════════════════════════════════ */}
           {phase==="decision"&&!isEnding&&(
             <div style={{animation:"fadeUp .3s both"}}>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:10}}>▸ YOUR MOVE</div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3,marginBottom:10}}>▸ AVAILABLE ACTIONS</div>
               <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {node.choices?.map(c=>(
-                  <div key={c.id} onMouseEnter={()=>setHov(c)} onMouseLeave={()=>setHov(null)} onClick={()=>handleSelect(c)} style={{border:`2px solid ${hov?.id===c.id?T.gold:T.border}`,background:hov?.id===c.id?T.goldD:T.surf,padding:"14px 16px",cursor:"pointer",transition:"all .15s",display:"flex",gap:12,alignItems:"flex-start"}}>
-                    <div style={{width:20,height:20,border:`2px solid ${hov?.id===c.id?T.gold:T.mid}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"border-color .15s"}}>
-                      <span style={{fontFamily:T.mono,fontSize:10,fontWeight:800,color:hov?.id===c.id?T.gold:T.dim}}>{c.id.toUpperCase()}</span>
+                {availableActions.map(action=>(
+                  <div key={action.id} onMouseEnter={()=>setHov(action)} onMouseLeave={()=>setHov(null)} onClick={()=>handleSelect(action)} style={{border:`2px solid ${hov?.id===action.id?T.gold:T.border}`,background:hov?.id===action.id?T.goldD:T.surf,padding:"16px 18px",cursor:"pointer",transition:"all .15s",display:"flex",gap:14,alignItems:"flex-start"}}>
+                    <div style={{width:24,height:24,border:`2px solid ${hov?.id===action.id?T.gold:T.mid}`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,marginTop:1,transition:"border-color .15s",borderRadius:"50%"}}>
+                      <span style={{fontFamily:T.mono,fontSize:10,fontWeight:800,color:hov?.id===action.id?T.gold:T.dim}}>{action.category?.[0]||"A"}</span>
                     </div>
                     <div style={{flex:1}}>
-                      <div style={{fontFamily:T.sans,fontSize:13.5,color:hov?.id===c.id?T.txt:"#ccc",fontWeight:600,marginBottom:3}}>{c.label}</div>
-                      <div style={{fontFamily:T.sans,fontSize:12,color:T.dim,lineHeight:1.55}}>{c.desc}</div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
+                        <div style={{fontFamily:T.sans,fontSize:14,color:hov?.id===action.id?T.txt:"#ddd",fontWeight:600}}>{action.title}</div>
+                        {action.category && <span style={{fontFamily:T.mono,fontSize:7,color:T.gold,background:`${T.gold}12`,padding:"2px 6px",letterSpacing:1}}>{action.category}</span>}
+                      </div>
+                      <div style={{fontFamily:T.sans,fontSize:12,color:"#999",lineHeight:1.55}}>{action.description}</div>
                     </div>
-                    <span style={{fontFamily:T.mono,fontSize:10,color:T.gold,opacity:hov?.id===c.id?1:0,transition:"opacity .15s",flexShrink:0,marginTop:2}}>→</span>
+                    <span style={{fontFamily:T.mono,fontSize:10,color:T.gold,opacity:hov?.id===action.id?1:0,transition:"opacity .15s",flexShrink:0,marginTop:2}}>→</span>
                   </div>
                 ))}
               </div>
-              {hov&&(
-                <div style={{marginTop:12,background:T.surf2,border:`1px solid ${T.goldM}`,padding:"10px 14px",animation:"fadeIn .15s both"}}>
-                  <div style={{fontFamily:T.mono,fontSize:7,color:T.gold,letterSpacing:2,marginBottom:6}}>▸ PROJECTED IMPACT</div>
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                    {Object.entries(hov.impact||{}).filter(([k])=>FM_STAT_META[k]).map(([k,v])=>{
-                      const m=FM_STAT_META[k];
-                      const good=(m.good==="high"&&v>0)||(m.good==="low"&&v<0);
-                      const color=good?T.green:T.red;
-                      return <span key={k} style={{fontFamily:T.mono,fontSize:8,color,background:`${color}12`,padding:"2px 9px",border:`1px solid ${color}33`,letterSpacing:1}}>{m.icon} {m.label}: {v>0?"+":""}{m.fmt==="money"?`PKR ${fmtMoney(v)}`:v}</span>;
-                    })}
-                  </div>
+              {availableActions.length === 0 && (
+                <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",textAlign:"center"}}>
+                  <div style={{fontFamily:T.mono,fontSize:10,color:T.dim}}>No actions available. The situation may require different conditions.</div>
                 </div>
               )}
             </div>
           )}
 
-          {/* Decision log */}
+          {/* Action log */}
           {log.length>0&&<div style={{marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:20}}>
-            <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>YOUR DECISIONS</div>
+            <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>ACTION HISTORY</div>
             {log.map((e,i)=>(
               <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
                 <div style={{width:16,height:16,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span></div>
-                <div><div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{e.label}</div><div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Month {e.month}</div></div>
+                <div><div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{e.action}</div><div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Week {e.week}</div></div>
               </div>
             ))}
           </div>}
@@ -892,35 +1479,71 @@ function FreshMartSim({onBack,onComplete}){
         {/* Stats sidebar */}
         <div style={{width:isMobile?"100%":268,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?"16px 12px":"20px 16px",flexShrink:0}}>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS DASHBOARD</div>
-          {FM_STAT_KEYS.map(k=>{
-            const m=FM_STAT_META[k];
-            const v=stats[k],pv=prevStats?.[k];
-            const hc=HC[statHealth(k,v)];
-            const delta=pv!==undefined?v-pv:0;
-            const showBar=m.fmt==="pct";
-            const previewV=previewImp?.[k];
+          
+          {/* Key State Variables */}
+          {[
+            {key: "cash_on_hand", label: "Cash on Hand", icon: "💰", fmt: "money"},
+            {key: "emergency_days_left", label: "Days Left", icon: "⏰", fmt: "num"},
+            {key: "recovery_score", label: "Recovery Score", icon: "📈", fmt: "pct", custom: Math.round(recoveryScore)},
+            {key: "debt_stress", label: "Debt Stress", icon: "😰", fmt: "pct"},
+            {key: "fast_moving_share", label: "Fast-Moving Stock", icon: "⚡", fmt: "pct"},
+            {key: "customer_trust", label: "Customer Trust", icon: "🤝", fmt: "pct"}
+          ].map(({key, label, icon, fmt, custom}) => {
+            const value = custom !== undefined ? custom : state[key];
+            const prevValue = prevWeekState?.[key];
+            const meta = FM_STATE_META[key];
+            const isPositive = meta?.good === "high" ? value > prevValue : value < prevValue;
+            const delta = prevValue !== undefined ? value - prevValue : 0;
+            
             return(
-              <div key={k} style={{background:T.surf2,border:`1px solid ${previewImp&&previewV?`${previewV>0?T.green:T.red}44`:T.border}`,padding:"9px 12px",marginBottom:6,transition:"border-color .2s"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showBar?5:0}}>
-                  <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{m.icon} {m.label}</span>
+              <div key={key} style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"9px 12px",marginBottom:6}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{icon} {label}</span>
                   <div style={{display:"flex",alignItems:"center",gap:4}}>
-                    <AnimStat value={v} prevValue={pv} statKey={k}/>
-                    {delta!==0&&<span style={{fontFamily:T.mono,fontSize:8,color:delta>0?((m.good==="high")?T.green:T.red):((m.good==="low")?T.green:T.red),background:delta>0?`${T.green}18`:`${T.red}18`,padding:"0 5px"}}>{delta>0?"+":""}{m.fmt==="money"?`PKR ${fmtMoney(delta)}`:delta}</span>}
+                    <span style={{fontFamily:T.mono,fontSize:9,color:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,fontWeight:700}}>
+                      {fmt === "money" ? `PKR ${fmtMoney(value)}` : fmt === "pct" ? `${Math.round(value * 100)}%` : value}
+                    </span>
+                    {delta !== 0 && (
+                      <span style={{fontFamily:T.mono,fontSize:7,color:isPositive?T.green:T.red,background:isPositive?`${T.green}18`:`${T.red}18`,padding:"0 4px"}}>
+                        {delta > 0 ? "+" : ""}{fmt === "money" ? fmtMoney(delta) : fmt === "pct" ? `${Math.round(delta * 100)}%` : delta}
+                      </span>
+                    )}
                   </div>
                 </div>
-                {showBar&&<div style={{height:3,background:T.muted}}><div style={{height:"100%",width:`${Math.min(100,v)}%`,background:hc,transition:"width .8s"}}/></div>}
-                {previewImp&&previewV&&<div style={{fontFamily:T.mono,fontSize:7,color:previewV>0?T.green:T.red,marginTop:3,letterSpacing:1}}>→ {previewV>0?"+":""}{m.fmt==="money"?`PKR ${fmtMoney(previewV)}`:previewV} if chosen</div>}
+                {fmt === "pct" && (
+                  <div style={{height:3,background:T.muted,marginTop:4}}>
+                    <div style={{height:"100%",width:`${Math.min(100,value * 100)}%`,background:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,transition:"width .8s"}}/>
+                  </div>
+                )}
               </div>
             );
           })}
-          <div style={{background:T.surf2,border:`1px solid ${stats.monthlySales>=RENT?"#3DEB8A33":"#FF525233"}`,padding:"10px 12px",marginTop:4}}>
+          
+          {/* Breakeven Status */}
+          <div style={{background:T.surf2,border:`1px solid ${state.monthlySales>=RENT?"#3DEB8A33":"#FF525233"}`,padding:"10px 12px",marginTop:4}}>
             <div style={{display:"flex",justifyContent:"space-between"}}>
               <span style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>BREAKEVEN</span>
-              <span style={{fontFamily:T.mono,fontSize:9,fontWeight:700,color:stats.monthlySales>=RENT?T.green:T.red}}>{stats.monthlySales>=RENT?"✓ ABOVE":"✗ BELOW"}</span>
+              <span style={{fontFamily:T.mono,fontSize:9,fontWeight:700,color:state.monthlySales>=RENT?T.green:T.red}}>{state.monthlySales>=RENT?"✓ ABOVE":"✗ BELOW"}</span>
             </div>
-            <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginTop:2}}>Gap vs rent: <span style={{color:stats.monthlySales>=RENT?T.green:T.red}}>{stats.monthlySales>=RENT?"+":"-"}PKR {fmtMoney(Math.abs(stats.monthlySales-RENT))}</span></div>
+            <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,marginTop:2}}>Gap vs rent: <span style={{color:state.monthlySales>=RENT?T.green:T.red}}>{state.monthlySales>=RENT?"+":"-"}PKR {fmtMoney(Math.abs(state.monthlySales-RENT))}</span></div>
           </div>
-          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>💡 Hover a choice to preview stat impact before committing.</div>
+          
+          {/* Delayed Effects Queue */}
+          {delayedEffects.length > 0 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.gold}44`,padding:"10px 12px",marginTop:4}}>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2,marginBottom:6}}>PENDING EFFECTS</div>
+              {delayedEffects.slice(0, 3).map((effect, i) => (
+                <div key={i} style={{fontFamily:T.mono,fontSize:7,color:T.dim,marginBottom:2}}>
+                  Week {effect.week}: {effect.change} {effect.var}
+                </div>
+              ))}
+              {delayedEffects.length > 3 && (
+                <div style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>+{delayedEffects.length - 3} more...</div>
+              )}
+            </div>
+          )}
+          
+          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>💡 Actions unlock based on business conditions. Choose wisely.</div>
         </div>
       </div>
     </div>
