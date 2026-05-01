@@ -723,346 +723,30 @@ const FM_STATE_META = {
   customer_footfall: { label: "Daily Footfall", good: "high", unit: "people" },
   profit_margin: { label: "Profit Margin", good: "high", unit: "%" },
   dead_stock_units: { label: "Dead Stock Units", good: "low", unit: "SKUs" },
-  dead_stock_share: { label: "Dead Stock Share", good: "low", unit: "%" },
   inventory_turnover: { label: "Inventory Turnover", good: "high", unit: "turns" },
   customer_satisfaction: { label: "Customer Satisfaction", good: "high", unit: "%" },
   employee_morale: { label: "Employee Morale", good: "high", unit: "%" },
   supplier_relations: { label: "Supplier Relations", good: "high", unit: "%" }
 };
 
-// Action cards with eligibility conditions and effects
-const ACTION_CARDS = {
-  // 1. Apply Pareto
-  apply_pareto: {
-    id: "apply_pareto",
-    title: "Apply Pareto Principle",
-    category: "Operations",
-    description: "Focus on 20% of products that generate 80% of revenue. Liquidate slow-moving inventory.",
-    one_time: true, // Can only be used once
-    eligibility: {
-      conditions: [
-        {var: "dead_stock_share", operator: ">=", value: 0.4},
-        {operator: "or"},
-        {var: "data_visibility", operator: ">=", value: 0.3},
-        {operator: "or"},
-        {var: "pos_installed", operator: "==", value: true}
-      ]
-    },
-    unlocks: ["pos_installation", "supplier_negotiation_pareto"], // Actions that become available after this
-    effects: {
-      immediate: [
-        {var: "fast_moving_share", change: "+0.3"},
-        {var: "dead_stock_share", change: "-0.3"},
-        {var: "pareto_score", change: "+0.4"},
-        {var: "cash_on_hand", change: "+2000000"}, // From liquidation
-        {var: "stock_value", change: "-6000000"},
-        {var: "recovery_momentum", change: "+0.2"}
-      ],
-      delayed: [
-        {var: "conversion_rate", change: "+0.1", delay: 2},
-        {var: "customer_trust", change: "-0.05", delay: 1} // Slight trust loss from reduced variety
-      ],
-      risks: [
-        {condition: {var: "assortment_fit", operator: "<", value: 0.3}, effect: {var: "demand_level", change: "-0.1"}}
-      ]
-    }
-  },
-  
-  // 2. Pricing Strategy Family
-  pricing_strategy: {
-    variants: {
-      raise_prices: {
-        title: "Raise Prices",
-        description: "Increase prices by 15-20% across the board to improve margins.",
-        eligibility: {
-          conditions: [
-            {var: "price_index_vs_market", operator: "<", value: 0.95},
-            {var: "customer_trust", operator: ">=", value: 0.5}
-          ]
-        },
-        effects: {
-          immediate: [
-            {var: "price_index_vs_market", change: "+0.15"},
-            {var: "demand_level", change: "-0.2"},
-            {var: "customer_trust", change: "-0.1"}
-          ]
-        }
-      },
-      normalize_prices: {
-        title: "Normalize to Market",
-        description: "Adjust prices to match market rates after previous increases.",
-        eligibility: {
-          conditions: [
-            {var: "price_index_vs_market", operator: ">", value: 1.1},
-            {var: "customer_trust", operator: "<", value: 0.5}
-          ]
-        },
-        effects: {
-          immediate: [
-            {var: "price_index_vs_market", change: "-0.1"},
-            {var: "demand_level", change: "+0.15"},
-            {var: "customer_trust", change: "+0.1"}
-          ]
-        }
-      },
-      cut_below_market: {
-        title: "Cut Below Market",
-        description: "Aggressive pricing to build customer base quickly.",
-        eligibility: {
-          conditions: [
-            {var: "cash_on_hand", operator: ">=", value: 1000000},
-            {var: "emergency_days_left", operator: ">", value: 8}
-          ]
-        },
-        effects: {
-          immediate: [
-            {var: "price_index_vs_market", change: "-0.2"},
-            {var: "demand_level", change: "+0.3"},
-            {var: "conversion_rate", change: "+0.2"},
-            {var: "weekly_burn", change: "+50000"} // Higher burn from lower margins
-          ]
-        }
-      }
-    }
-  },
-  
-  // 3. Negotiate with Suppliers
-  negotiate_suppliers: {
-    id: "negotiate_suppliers",
-    title: "Negotiate with Suppliers",
-    category: "Financial",
-    description: "Seek better terms, returns on slow stock, or extended payment terms.",
-    eligibility: {
-      conditions: [
-        {var: "supplier_relationship", operator: ">=", value: 0.4},
-        {operator: "or"},
-        {var: "overdue_payables", operator: ">", value: 0}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "overdue_payables", change: "-200000"},
-        {var: "supplier_relationship", change: "+0.1"}
-      ],
-      delayed: [
-        {var: "stock_value", change: "-2000000", delay: 1}, // Returns processed
-        {var: "cash_on_hand", change: "+800000", delay: 1}
-      ],
-      risks: [
-        {condition: {var: "supplier_relationship", operator: "<", value: 0.5}, 
-         effect: {var: "supplier_relationship", change: "-0.2", failure_chance: 0.3}}
-      ]
-    }
-  },
-  
-  // 4. Landlord Negotiation
-  negotiate_landlord: {
-    id: "negotiate_landlord",
-    title: "Approach Landlord for Rent Deferral",
-    category: "Financial",
-    description: "Request temporary rent reduction or payment deferral.",
-    eligibility: {
-      conditions: [
-        {var: "rent_due", operator: ">", value: 300000},
-        {var: "landlord_relationship", operator: ">=", value: 0.5},
-        {var: "transparency", operator: "==", value: true}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "rent_due", change: "-200000"},
-        {var: "landlord_relationship", change: "+0.1"}
-      ],
-      delayed: [
-        {var: "rent_due", change: "+400000", delay: 4} // Deferred rent becomes due
-      ]
-    }
-  },
-  
-  // 5. Emergency Liquidation
-  emergency_liquidation: {
-    id: "emergency_liquidation",
-    title: "Emergency Liquidation",
-    category: "Crisis",
-    description: "Deep discount sale (40-50% off) to generate immediate cash.",
-    eligibility: {
-      conditions: [
-        {var: "emergency_days_left", operator: "<=", value: 14},
-        {var: "dead_stock_share", operator: ">", value: 0.3}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "cash_on_hand", change: "+3000000"},
-        {var: "stock_value", change: "-7000000"},
-        {var: "dead_stock_share", change: "-0.4"},
-        {var: "emergency_actions_used", change: "+1"},
-        {var: "customer_trust", change: "-0.1"}
-      ]
-    }
-  },
-  
-  // 6. Financing Options
-  take_loan: {
-    id: "take_loan",
-    title: "Take Business Loan",
-    category: "Financial",
-    description: "Secure PKR 5M loan at 22% interest for restructuring capital.",
-    eligibility: {
-      conditions: [
-        {var: "loan_balance", operator: "==", value: 0},
-        {var: "debt_stress", operator: "<", value: 0.3}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "cash_on_hand", change: "+5000000"},
-        {var: "loan_balance", change: "+5000000"},
-        {var: "debt_stress", change: "+0.4"},
-        {var: "weekly_burn", change: "+91000"} // Monthly interest
-      ]
-    }
-  },
-  
-  // 7. Install POS (requires Pareto or high data visibility)
-  install_pos: {
-    id: "install_pos",
-    requires_unlock: true, // Must be unlocked
-    title: "Install POS System",
-    category: "Operations",
-    description: "Install point-of-sale system for real-time data visibility and inventory tracking.",
-    one_time: true,
-    eligibility: {
-      conditions: [
-        {var: "cash_on_hand", operator: ">=", value: 500000}
-      ]
-    },
-    unlocks: ["data_driven_pricing", "inventory_optimization"],
-    effects: {
-      immediate: [
-        {var: "cash_on_hand", change: "-800000"},
-        {var: "pos_installed", value: true},
-        {var: "data_visibility", change: "+0.6"},
-        {var: "execution_speed", change: "+0.2"}
-      ]
-    }
-  },
-  
-  // 8. Supplier Negotiation (Pareto path)
-  supplier_negotiation_pareto: {
-    id: "supplier_negotiation_pareto",
-    requires_unlock: true,
-    title: "Supplier Terms Negotiation",
-    category: "Operations",
-    description: "Negotiate better terms with suppliers using Pareto analysis data.",
-    one_time: true,
-    eligibility: {
-      conditions: [
-        {var: "pareto_score", operator: ">=", value: 0.6},
-        {var: "supplier_relationship", operator: ">=", value: 0.5}
-      ]
-    },
-    unlocks: ["bulk_purchasing", "consignment_stock"],
-    effects: {
-      immediate: [
-        {var: "supplier_relationship", change: "+0.2"},
-        {var: "stock_value", change: "-2000000"},
-        {var: "weekly_burn", change: "-15000"}
-      ]
-    }
-  },
-  
-  // 9. Data-Driven Pricing (requires POS)
-  data_driven_pricing: {
-    id: "data_driven_pricing",
-    requires_unlock: true,
-    title: "Data-Driven Pricing Strategy",
-    category: "Commercial",
-    description: "Use POS data to implement dynamic pricing based on demand patterns.",
-    one_time: true,
-    eligibility: {
-      conditions: [
-        {var: "data_visibility", operator: ">=", value: 0.7},
-        {var: "customer_trust", operator: ">=", value: 0.4}
-      ]
-    },
-    unlocks: ["loyalty_program", "demand_forecasting"],
-    effects: {
-      immediate: [
-        {var: "price_index_vs_market", change: "+0.15"},
-        {var: "demand_level", change: "+0.1"},
-        {var: "conversion_rate", change: "+0.1"}
-      ]
-    }
-  },
-  
-  // 10. Emergency Liquidation (desperation path)
-  emergency_liquidation: {
-    id: "emergency_liquidation",
-    title: "Emergency Liquidation Sale",
-    category: "Survival",
-    description: "Deep discount sale of all inventory to generate immediate cash. Last resort.",
-    one_time: true,
-    eligibility: {
-      conditions: [
-        {var: "emergency_days_left", operator: "<=", value: 7}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "cash_on_hand", change: "+4000000"},
-        {var: "stock_value", change: "-15000000"},
-        {var: "customer_trust", change: "-0.3"},
-        {var: "price_index_vs_market", change: "-0.4"},
-        {var: "emergency_actions_used", change: "+1"}
-      ]
-    }
-  },
-  
-  // 8. Inventory Management
-  restock_variety: {
-    id: "restock_variety",
-    title: "Restock More Variety",
-    category: "Inventory",
-    description: "Expand product range to better match customer preferences.",
-    eligibility: {
-      conditions: [
-        {var: "assortment_fit", operator: "<", value: 0.5},
-        {var: "cash_on_hand", operator: ">=", value: 500000}
-      ]
-    },
-    effects: {
-      immediate: [
-        {var: "stock_value", change: "+2000000"},
-        {var: "assortment_fit", change: "+0.2"},
-        {var: "cash_on_hand", change: "-500000"}
-      ],
-      risks: [
-        {condition: {var: "data_visibility", operator: "<", value: 0.5}, 
-         effect: {var: "dead_stock_share", change: "+0.1"}}
-      ]
-    }
-  }
-};
-
-// Dynamic scoring system
+// Dynamic scoring system for FreshMart business simulation
 const calculateRecoveryScore = (state) => {
   const weights = {
     cash_stability: 0.25,
-    gross_margin_health: 0.20,
-    inventory_efficiency: 0.15,
-    customer_demand: 0.15,
-    operational_excellence: 0.15,
+    profitability: 0.20,
+    inventory_health: 0.15,
+    customer_satisfaction: 0.15,
+    operational_efficiency: 0.15,
     risk_management: 0.10
   };
   
   const scores = {
     cash_stability: Math.min(1, state.cash_on_hand / 3000000) * (1 - state.debt_stress * 0.5),
-    gross_margin_health: (state.price_index_vs_market * 0.6 + state.demand_level * 0.4),
-    inventory_efficiency: state.fast_moving_share * (1 - state.dead_stock_share) * (1 - state.stockout_rate),
-    customer_demand: state.demand_level * state.customer_trust * state.conversion_rate,
-    operational_excellence: (state.pareto_score * 0.4 + state.data_visibility * 0.3 + state.execution_speed * 0.3),
-    risk_management: (1 - state.debt_stress) * (1 - state.emergency_actions_used * 0.2) * Math.max(0, 1 - state.time_since_problem_started * 0.1)
+    profitability: Math.min(1, state.profit_margin / 0.3) * Math.max(0, state.monthly_sales / state.month_target_3),
+    inventory_health: Math.max(0, 1 - state.dead_stock_units / 400) * state.inventory_turnover,
+    customer_satisfaction: state.customer_satisfaction * Math.min(1, state.customer_footfall / 150),
+    operational_efficiency: (state.employee_morale * 0.5 + state.supplier_relations * 0.5),
+    risk_management: (1 - state.debt_stress) * Math.max(0, state.cash_on_hand / (state.monthly_burn * 3))
   };
   
   return Object.entries(weights).reduce((total, [key, weight]) => {
@@ -1083,7 +767,7 @@ const determineEnding = (state, week) => {
     };
   }
   
-  if (state.debt_stress > 0.8 && state.weekly_burn > state.cash_on_hand * 0.1) {
+  if (state.debt_stress > 0.8 && state.monthly_burn > state.cash_on_hand * 0.1) {
     return {
       type: "bad", 
       title: "Debt Spiral",
@@ -1094,7 +778,7 @@ const determineEnding = (state, week) => {
   
   // Only allow recovery endings after at least 4 weeks (minimum time for meaningful intervention)
   if (week >= 4) {
-    if (recoveryScore >= 75 && state.cash_on_hand > 1500000 && state.emergency_days_left > 30) {
+    if (recoveryScore >= 75 && state.cash_on_hand > 1500000) {
       return {
         type: "perfect",
         title: "Optimal Recovery", 
@@ -1103,23 +787,21 @@ const determineEnding = (state, week) => {
       };
     }
     
-    if (recoveryScore >= 50 && state.cash_on_hand > 800000 && state.emergency_days_left > 14) {
+    if (recoveryScore >= 50 && state.cash_on_hand > 800000) {
       return {
         type: "good",
         title: "Business Stabilized",
-        text: "FreshMart survived but remains fragile.",
+        text: "FreshMart stabilized but continues to face challenges.",
+        score: recoveryScore
+      };
+    } else {
+      return {
+        type: "struggle",
+        title: "Ongoing Struggle",
+        text: "FreshMart survives but remains in fragile condition.",
         score: recoveryScore
       };
     }
-  }
-  
-  if (week >= 20) {
-    return {
-      type: "warn",
-      title: "Extended Crisis",
-      text: "Business survives but struggle continues.",
-      score: recoveryScore
-    };
   }
   
   return null; // Continue simulation
@@ -1142,12 +824,16 @@ function fmtStat(key,v){
   return `${Math.round(v)}`;
 }
 function statHealth(key,v){
-  if(key==="cash") return v>=1500000?"good":v>=600000?"warn":"bad";
-  if(key==="monthlySales") return v>=400000?"good":v>=260000?"warn":"bad";
-  if(key==="inventory") return v<=10000000?"good":v<=18000000?"warn":"bad";
-  if(key==="customerCount") return v>=120?"good":v>=70?"warn":"bad";
-  if(key==="staffMorale") return v>=60?"good":v>=35?"warn":"bad";
-  if(key==="ownerStress") return v<=50?"good":v<=70?"warn":"bad";
+  if(key==="cash_on_hand") return v>=3000000?"good":v>=1500000?"warn":"bad";
+  if(key==="monthly_sales") return v>=3000000?"good":v>=2000000?"warn":"bad";
+  if(key==="monthly_expenses") return v<=800000?"good":v<=1000000?"warn":"bad";
+  if(key==="customer_footfall") return v>=150?"good":v>=100?"warn":"bad";
+  if(key==="employee_morale") return v>=0.7?"good":v>=0.5?"warn":"bad";
+  if(key==="debt_stress") return v<=0.3?"good":v<=0.6?"warn":"bad";
+  if(key==="profit_margin") return v>=0.2?"good":v>=0.1?"warn":"bad";
+  if(key==="dead_stock_units") return v<=100?"good":v<=200?"warn":"bad";
+  if(key==="customer_satisfaction") return v>=0.8?"good":v>=0.6?"warn":"bad";
+  if(key==="supplier_relations") return v>=0.7?"good":v>=0.5?"warn":"bad";
   return "good";
 }
 const HC={good:T.green,warn:T.gold,bad:T.red,neutral:T.blue};
@@ -1787,7 +1473,6 @@ function FreshMartSim({onBack,onComplete}){
     });
     
     // Update derived values
-    newState.emergency_days_left = Math.max(0, Math.floor(newState.cash_on_hand / newState.weekly_burn * 7));
     newState.decisions_made = (newState.decisions_made || 0) + 1;
     
     return newState;
@@ -1924,20 +1609,26 @@ function FreshMartSim({onBack,onComplete}){
     
     if (currentState.cash_on_hand > 3000000) {
       insights.push("Strong cash position achieved through strategic decisions");
-    } else if (currentState.emergency_days_left <= 7) {
+    } else if (currentState.cash_on_hand < 1000000) {
       insights.push("Critical cash flow situation required immediate action");
     }
     
-    if (currentState.dead_stock_share < 0.3) {
+    if (currentState.dead_stock_units < 100) {
       insights.push("Successfully optimized inventory management");
     }
     
-    if (currentState.customer_trust > 0.8) {
+    if (currentState.customer_satisfaction > 0.8) {
       insights.push("Customer confidence restored through consistent quality");
     }
     
     if (currentState.debt_stress > 0.6) {
       insights.push("High debt burden created ongoing financial pressure");
+    }
+    
+    if (currentState.monthly_sales >= currentState.month_target_6) {
+      insights.push("Achieved ambitious growth targets through strategic execution");
+    } else if (currentState.monthly_sales >= currentState.month_target_3) {
+      insights.push("Met initial targets and positioned business for growth");
     }
     
     return insights;
