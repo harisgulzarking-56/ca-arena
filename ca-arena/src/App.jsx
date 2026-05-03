@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { supabase } from "./lib/supabase";
+import html2canvas from 'html2canvas';
 
 /* ═══════════════════════════════════════════════════════════════════
    SUPABASE CONFIG  ← paste your real values here
@@ -32,16 +33,20 @@ function canAccessDifficulty(xp, diff){
    DESIGN TOKENS
 ═══════════════════════════════════════════════════════════════════ */
 const T = {
-  gold:"#F4C430", goldD:"#F4C43018", goldM:"#F4C43055",
-  blue:"#4FC3F7", blueD:"#4FC3F714",
-  red:"#FF5252", redD:"#FF525212",
-  green:"#3DEB8A", greenD:"#3DEB8A10",
-  orange:"#FF9800",
-  bg:"#060608", surf:"#0d0d10", surf2:"#111116", border:"#1c1c22", mid:"#252530",
-  txt:"#f0f0f0", dim:"#4a4a58", muted:"#1e1e26",
-  mono:"'IBM Plex Mono',monospace",
-  serif:"'Playfair Display',Georgia,serif",
-  sans:"'IBM Plex Sans',sans-serif",
+  bg:"#0A0A0A",
+  surf:"#121212",
+  surf2:"#1A1A1A",
+  border:"#2A2A2A",
+
+  txt:"#F5F5F5",
+  dim:"#9CA3AF",
+
+  gold:"#D4AF37",
+  goldSoft:"#D4AF3722",
+
+  blue:"#3B82F6",
+  green:"#10B981",
+  red:"#F43F5E",
 };
 const DC = { SEED:"#3DEB8A", GROWTH:"#F4C430", APEX:"#FF5252" };
 
@@ -98,6 +103,17 @@ const FM_INITIAL_STATE = {
   month_target_3: 2000000,  // 2M sales by month 3
   month_target_6: 4000000,  // 4M sales by month 6
   capital_invested: 30000000,  // 30M invested
+  
+  // Compound growth multipliers
+  growth_base: 1000000,  // Base monthly sales from initial state
+  footfall_multiplier: 1.0,  // Customer traffic multiplier
+  conversion_multiplier: 1.0,  // Sales conversion multiplier  
+  momentum_multiplier: 1.0,  // Growth momentum multiplier
+  
+  // Decision impact tracking
+  month1_decision_impact: 0,  // Growth contribution from Month 1 decisions
+  month2_decision_impact: 0,  // Growth contribution from Month 2 decisions
+  month3_decision_impact: 0,  // Growth contribution from Month 3 decisions
   
   // Game state
   current_month: 0,
@@ -310,7 +326,7 @@ const FRESHMART_SCENARIOS = {
           customer_satisfaction: "+0.3",
           salary_expense: "+50000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "automation",
@@ -320,7 +336,7 @@ const FRESHMART_SCENARIOS = {
           cash_on_hand: "-200000",
           employee_morale: "-0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -337,7 +353,7 @@ const FRESHMART_SCENARIOS = {
           customer_footfall: "+15",
           cash_on_hand: "-100000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "inventory_optimization",
@@ -347,7 +363,7 @@ const FRESHMART_SCENARIOS = {
           inventory_turnover: "+0.4",
           supplier_relations: "+0.2"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -365,7 +381,7 @@ const FRESHMART_SCENARIOS = {
           customer_footfall: "-10",
           customer_satisfaction: "-0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "volume_focus",
@@ -375,7 +391,7 @@ const FRESHMART_SCENARIOS = {
           cash_on_hand: "-150000",
           customer_satisfaction: "+0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -392,7 +408,7 @@ const FRESHMART_SCENARIOS = {
           profit_margin: "+0.05",
           customer_satisfaction: "+0.2"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "marketing_scale",
@@ -402,7 +418,7 @@ const FRESHMART_SCENARIOS = {
           cash_on_hand: "-300000",
           monthly_sales: "+200000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -419,7 +435,7 @@ const FRESHMART_SCENARIOS = {
           employee_morale: "-0.3",
           customer_satisfaction: "-0.2"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "debt_restructuring",
@@ -429,7 +445,7 @@ const FRESHMART_SCENARIOS = {
           supplier_relations: "-0.1",
           cash_on_hand: "+100000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -447,7 +463,7 @@ const FRESHMART_SCENARIOS = {
           profit_margin: "-0.08",
           customer_satisfaction: "+0.3"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "value_addition",
@@ -457,7 +473,7 @@ const FRESHMART_SCENARIOS = {
           monthly_expenses: "+100000",
           customer_footfall: "+10"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -474,7 +490,7 @@ const FRESHMART_SCENARIOS = {
           monthly_sales: "+200000",
           cash_on_hand: "-150000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "customer_retention",
@@ -484,7 +500,7 @@ const FRESHMART_SCENARIOS = {
           monthly_sales: "+250000",
           cash_on_hand: "-100000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -501,7 +517,7 @@ const FRESHMART_SCENARIOS = {
           monthly_sales: "+200000",
           profit_margin: "+0.03"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "inventory_system",
@@ -511,7 +527,7 @@ const FRESHMART_SCENARIOS = {
           cash_on_hand: "-200000",
           dead_stock_units: "-50"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -529,7 +545,7 @@ const FRESHMART_SCENARIOS = {
           supplier_relations: "+0.1",
           inventory_turnover: "+0.2"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "cash_reserve",
@@ -539,7 +555,7 @@ const FRESHMART_SCENARIOS = {
           debt_stress: "-0.1",
           supplier_relations: "+0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -556,7 +572,7 @@ const FRESHMART_SCENARIOS = {
           employee_morale: "-0.1",
           inventory_turnover: "+0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "alternative_funding",
@@ -566,7 +582,7 @@ const FRESHMART_SCENARIOS = {
           debt_stress: "+0.15",
           supplier_relations: "-0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
@@ -583,7 +599,7 @@ const FRESHMART_SCENARIOS = {
           cash_on_hand: "-400000",
           debt_stress: "-0.1"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       },
       {
         id: "diversification",
@@ -593,14 +609,66 @@ const FRESHMART_SCENARIOS = {
           inventory_turnover: "+0.1",
           monthly_expenses: "-50000"
         },
-        next: "month3_checkpoint"
+        next: "month3_decisions"
       }
     ]
   },
 
-  month3_checkpoint: {
-    id: "month3_checkpoint",
-    description: "MONTH 3 SYSTEM CHECKPOINT: Time to evaluate progress toward the 2M sales target. Your decisions so far have shaped the business trajectory. Based on current performance, you'll either advance to scaling phase or enter distress mode.",
+  // MONTH 3 DECISIONS - Final push before checkpoint
+  month3_decisions: {
+    id: "month3_decisions",
+    description: "Month 3: The checkpoint evaluation is approaching. Your early decisions have set the foundation, but this month could make or break the 2M target. What's your final strategic move before the system evaluation?",
+    options: [
+      {
+        id: "aggressive_expansion",
+        label: "Aggressive Expansion - Open new sections, add product lines",
+        effect: {
+          monthly_sales: "+400000",
+          cash_on_hand: "-600000",
+          customer_footfall: "+30",
+          inventory_turnover: "-0.1"
+        },
+        next: "benchmark1_evaluation"
+      },
+      {
+        id: "operational_optimization",
+        label: "Operational Optimization - Streamline processes, reduce waste",
+        effect: {
+          monthly_sales: "+200000",
+          monthly_expenses: "-150000",
+          employee_morale: "+0.2",
+          inventory_turnover: "+0.2"
+        },
+        next: "benchmark1_evaluation"
+      },
+      {
+        id: "customer_focus",
+        label: "Customer Retention Focus - Loyalty programs, service improvements",
+        effect: {
+          monthly_sales: "+250000",
+          customer_satisfaction: "+0.3",
+          customer_footfall: "+20",
+          cash_on_hand: "-200000"
+        },
+        next: "benchmark1_evaluation"
+      },
+      {
+        id: "conservative_approach",
+        label: "Conservative Stabilization - Focus on current operations, minimize risk",
+        effect: {
+          monthly_sales: "+100000",
+          cash_on_hand: "+100000",
+          debt_stress: "-0.1",
+          employee_morale: "+0.1"
+        },
+        next: "benchmark1_evaluation"
+      }
+    ]
+  },
+
+  benchmark1_evaluation: {
+    id: "benchmark1_evaluation",
+    description: "BENCHMARK 1 EVALUATION: Start of Month 4 - Time to evaluate your 3-month performance toward the 2M sales target. Your decisions have shaped the business trajectory. Based on current performance, you'll either advance to scaling phase or enter distress mode.",
     isEnding: false,
     checkpoint: true,
     options: [] // Will be dynamically determined based on performance
@@ -684,6 +752,131 @@ const FRESHMART_SCENARIOS = {
         label: "Consider Shutdown - Acknowledge failure and exit",
         effect: {},
         next: "ending_failure"
+      }
+    ]
+  },
+
+  // MONTH 5 SURVIVAL - Emergency measures for struggling businesses
+  month5_survival: {
+    id: "month5_survival",
+    description: "Month 5: Emergency measures are in place but the business is still fragile. You need to stabilize operations while finding a path to survival. Every decision counts as cash reserves dwindle. Can you turn this around?",
+    options: [
+      {
+        id: "emergency_funding",
+        label: "Emergency Funding - Seek last-resort financing at high cost",
+        effect: {
+          cash_on_hand: "+1000000",
+          debt_stress: "+0.3",
+          monthly_expenses: "+50000"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "radical_downsize",
+        label: "Radical Downsize - Cut to essentials, focus on core products only",
+        effect: {
+          monthly_expenses: "-300000",
+          dead_stock_units: "-200",
+          monthly_sales: "-200000",
+          employee_morale: "-0.3"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "last_ditch_marketing",
+        label: "Last-Ditch Marketing - Desperate promotion to boost sales quickly",
+        effect: {
+          monthly_sales: "+500000",
+          cash_on_hand: "-300000",
+          customer_footfall: "+40"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "accept_failure",
+        label: "Accept Failure - Prepare for orderly shutdown",
+        effect: {},
+        next: "ending_failure"
+      }
+    ]
+  },
+
+  // MONTH 5 SCALING - Building momentum toward 4M target
+  month5_scaling: {
+    id: "month5_scaling",
+    description: "Month 5: Your scaling strategy is showing results! The business is growing but the 4M monthly target is ambitious. You need to accelerate growth while maintaining operational stability. What's your push to the finish line?",
+    options: [
+      {
+        id: "aggressive_marketing",
+        label: "Aggressive Marketing Campaign - Digital ads, local promotions",
+        effect: {
+          customer_footfall: "+80",
+          monthly_sales: "+800000",
+          cash_on_hand: "-500000",
+          monthly_expenses: "+100000"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "product_expansion",
+        label: "Premium Product Expansion - High-margin specialty items",
+        effect: {
+          profit_margin: "+0.2",
+          monthly_sales: "+600000",
+          dead_stock_units: "-50",
+          cash_on_hand: "-400000"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "operational_efficiency",
+        label: "Operational Efficiency - Streamline processes, reduce waste",
+        effect: {
+          monthly_expenses: "-200000",
+          inventory_turnover: "+0.3",
+          monthly_sales: "+400000",
+          employee_morale: "+0.2"
+        },
+        next: "month6_final"
+      },
+      {
+        id: "strategic_partnership",
+        label: "Strategic Partnership - Collaborate with complementary businesses",
+        effect: {
+          customer_footfall: "+60",
+          monthly_sales: "+700000",
+          supplier_relations: "+0.3",
+          cash_on_hand: "-300000"
+        },
+        next: "month6_final"
+      }
+    ]
+  },
+
+  // MONTH 6 FINAL - Final evaluation
+  month6_final: {
+    id: "month6_final",
+    description: "Month 6: This is it - the final evaluation. Your decisions over the past 5 months have led to this moment. The business will either achieve the 4M monthly sales target and secure its future, or fall short. Time to see the results of your turnaround strategy.",
+    options: [
+      {
+        id: "final_push",
+        label: "Final Evaluation - Review performance and determine outcome",
+        effect: {},
+        next: "ending_evaluation"
+      }
+    ]
+  },
+
+  // ENDING EVALUATION - Dynamic outcome based on performance
+  ending_evaluation: {
+    id: "ending_evaluation",
+    description: "Final Business Evaluation: Your 6-month turnaround journey is complete. The evaluation will determine FreshMart's future based on your strategic decisions and operational results.",
+    options: [
+      {
+        id: "review_results",
+        label: "View Final Results",
+        effect: {},
+        next: null // This will trigger the evaluateFinalOutcome function
       }
     ]
   },
@@ -1194,15 +1387,16 @@ function AnimStat({value,prevValue,statKey}){
 function FreshMartSim({onBack,onComplete}){
   // Month-based business simulation state
   const [state, setState] = useState({...FM_INITIAL_STATE});
-  const [currentScenario, setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
   const [currentMonth, setCurrentMonth] = useState(1);
-  const [decisionHistory, setDecisionHistory] = useState([]);
-  const [phase, setPhase] = useState("decision");
+  const [phase, setPhase] = useState("decision"); // "decision" | "result" | "ending"
   const [selectedOption, setSelectedOption] = useState(null);
-  const [isMobile, setIsMobile] = useState(() => {
-    if(typeof window==="undefined") return false;
-    return window.innerWidth <= 900;
-  });
+  const [decisionHistory, setDecisionHistory] = useState([]);
+  const [isMobile, setIsMobile] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(120); // 2 minutes in seconds
+  const [timerActive, setTimerActive] = useState(false);
+  const [monthStartTime, setMonthStartTime] = useState(null);
+  const [currentScenario, setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
+  const [permanentConsequences, setPermanentConsequences] = useState({}); // Track permanent consequences and penalties
   
   const topRef = useRef(null);
   
@@ -1211,19 +1405,131 @@ function FreshMartSim({onBack,onComplete}){
   const isEnding = currentScenario?.isEnding || false;
   const isCheckpoint = currentScenario?.checkpoint || false;
   
+  // Timer effect
+  useEffect(() => {
+    let interval;
+    
+    if (timerActive && timeRemaining > 0) {
+      interval = setInterval(() => {
+        setTimeRemaining(prev => {
+          if (prev <= 1) {
+            setTimerActive(false);
+            // Auto-advance to next month when time runs out
+            handleTimeExpired();
+            return 120; // Reset for next month
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    
+    return () => clearInterval(interval);
+  }, [timerActive, timeRemaining]);
+  
+  // Start timer when entering decision phase
+  useEffect(() => {
+    if (phase === "decision" && !timerActive && !isEnding) {
+      setTimeRemaining(120);
+      setTimerActive(true);
+      setMonthStartTime(Date.now());
+    }
+  }, [phase, currentMonth]);
+  
+  // Handle time expiration
+  function handleTimeExpired() {
+    // Auto-select a random option or apply penalty
+    const options = currentScenario.options || [];
+    if (options.length > 0) {
+      const randomOption = options[Math.floor(Math.random() * options.length)];
+      handleOptionSelect(randomOption);
+    }
+  }
+  
+  // Process permanent consequences from decisions
+  function processConsequences(option) {
+    const effects = option.effect || {};
+    const newConsequences = { ...permanentConsequences };
+    
+    // Process negative effects as permanent consequences
+    Object.entries(effects).forEach(([key, value]) => {
+      if (typeof value === 'string' && value.startsWith('-')) {
+        let consequenceType = '';
+        let consequenceName = '';
+        
+        // Map effects to consequence types
+        if (key === 'cash_on_hand') {
+          consequenceType = 'CASH_CRISIS';
+          consequenceName = 'Cash Crisis';
+        } else if (key === 'customer_satisfaction') {
+          consequenceType = 'CUSTOMER_EXODUS';
+          consequenceName = 'Customer Exodus';
+        } else if (key === 'employee_morale') {
+          consequenceType = 'STAFF_MUTINY';
+          consequenceName = 'Staff Mutiny';
+        } else if (key === 'monthly_expenses') {
+          consequenceType = 'COST_SPIRAL';
+          consequenceName = 'Cost Spiral';
+        } else if (key === 'customer_footfall') {
+          consequenceType = 'GHOST_TOWN';
+          consequenceName = 'Ghost Town';
+        } else if (key === 'dead_stock_units') {
+          consequenceType = 'INVENTORY_SWAMP';
+          consequenceName = 'Inventory Swamp';
+        }
+        
+        if (consequenceType && !newConsequences[consequenceType]) {
+          newConsequences[consequenceType] = {
+            name: consequenceName,
+            penalty: 1.0, // Start with 100% penalty
+            month: currentMonth,
+            severity: 'ACTIVE',
+            description: getConsequenceDescription(consequenceType)
+          };
+        } else if (newConsequences[consequenceType]) {
+          // Escalate existing consequence by 20%
+          newConsequences[consequenceType].penalty *= 1.2;
+          newConsequences[consequenceType].severity = 'ESCALATED';
+        }
+      }
+    });
+    
+    setPermanentConsequences(newConsequences);
+  }
+  
+  // Get consequence descriptions
+  function getConsequenceDescription(type) {
+    const descriptions = {
+      'CASH_CRISIS': 'Deliveries slowing down, suppliers demanding upfront payment',
+      'CUSTOMER_EXODUS': 'Negative reviews spreading, footfall declining rapidly',
+      'STAFF_MUTINY': 'Employees calling in sick, productivity plummeting',
+      'COST_SPIRAL': 'Operating expenses ballooning, profit margins shrinking',
+      'GHOST_TOWN': 'Empty aisles, no customers, inventory rotting',
+      'INVENTORY_SWAMP': 'Warehouse overflowing, storage costs skyrocketing'
+    };
+    return descriptions[type] || 'Business operations severely impacted';
+  }
+  
   // Business performance calculations
   const monthlyProfit = state.monthly_sales - state.monthly_expenses;
   const cashFlowPositive = monthlyProfit > 0;
   const salesTargetProgress = state.monthly_sales / state.month_target_3; // Month 3 target initially
   
-  // Apply option effects to state
+  // Apply option effects to state with compound growth system
   function applyOptionEffects(baseState, effects) {
     const newState = { ...baseState };
-    
+
+    // Track decision impact for growth calculation
+    let decisionImpact = 0;
+
     Object.entries(effects).forEach(([key, change]) => {
       if (typeof change === 'string' && change.startsWith('+')) {
         const value = parseFloat(change);
         newState[key] = Math.max(0, (newState[key] || 0) + value);
+        
+        // Track growth impact for sales-related decisions
+        if (key === 'monthly_sales') {
+          decisionImpact += value;
+        }
       } else if (typeof change === 'string' && change.startsWith('-')) {
         const value = parseFloat(change);
         newState[key] = Math.max(0, (newState[key] || 0) + value);
@@ -1233,18 +1539,60 @@ function FreshMartSim({onBack,onComplete}){
         newState[key] = change;
       }
     });
+
+    // Update compound growth multipliers based on decisions
+    if (effects.customer_footfall) {
+      const footfallChange = parseFloat(effects.customer_footfall) || 0;
+      newState.footfall_multiplier = Math.max(0.5, newState.footfall_multiplier + (footfallChange / 100));
+    }
     
+    if (effects.customer_satisfaction) {
+      const satisfactionChange = parseFloat(effects.customer_satisfaction) || 0;
+      newState.conversion_multiplier = Math.max(0.5, newState.conversion_multiplier + (satisfactionChange * 0.3));
+    }
+    
+    if (effects.employee_morale) {
+      const moraleChange = parseFloat(effects.employee_morale) || 0;
+      newState.momentum_multiplier = Math.max(0.5, newState.momentum_multiplier + (moraleChange * 0.2));
+    }
+
+    // Calculate compound growth: base × footfall × conversion × momentum
+    const compoundSales = newState.growth_base * 
+                        newState.footfall_multiplier * 
+                        newState.conversion_multiplier * 
+                        newState.momentum_multiplier;
+    
+    // Update monthly_sales with compound growth if not directly modified
+    if (!effects.monthly_sales) {
+      newState.monthly_sales = Math.max(1000000, compoundSales);
+    }
+
+    // Track decision impact by month
+    const currentMonth = newState.current_month || 1;
+    if (currentMonth === 1) {
+      newState.month1_decision_impact = decisionImpact;
+    } else if (currentMonth === 2) {
+      newState.month2_decision_impact = decisionImpact;
+    } else if (currentMonth === 3) {
+      newState.month3_decision_impact = decisionImpact;
+    }
+
     // Update derived values
     newState.decisions_made = (newState.decisions_made || 0) + 1;
-    
+
     return newState;
   }
   
   // Resolve next scenario based on option and handle checkpoint logic
   function resolveNextScenario(nextId, currentState) {
-    // Handle checkpoint evaluation at Month 3
-    if (currentMonth === 3 && nextId === "month3_checkpoint") {
+    // Handle benchmark evaluation at Month 4
+    if (nextId === "benchmark1_evaluation") {
       return evaluateCheckpoint(currentState);
+    }
+    
+    // Handle ending evaluation trigger
+    if (nextId === null || nextId === "ending_evaluation") {
+      return evaluateFinalOutcome(currentState);
     }
     
     // Handle final ending conditions
@@ -1256,32 +1604,43 @@ function FreshMartSim({onBack,onComplete}){
     return FRESHMART_SCENARIOS[nextId] || FRESHMART_SCENARIOS.ending_failure;
   }
   
-  // Evaluate Month 3 checkpoint and determine phase
+  // Evaluate Month 3 checkpoint and determine phase (made realistically unreachable)
   function evaluateCheckpoint(currentState) {
     const salesTarget = currentState.month_target_3; // 2M sales target
     const salesAchieved = currentState.monthly_sales;
-    const targetMet = salesAchieved >= salesTarget;
+    const cashFlowPositive = currentState.monthly_sales > currentState.monthly_expenses;
     
-    if (targetMet && cashFlowPositive) {
-      // Advance to scaling phase
+    // Check if 2M sales target is met with reasonable criteria
+    const scalingCriteria = salesAchieved >= 2000000 && cashFlowPositive;
+    
+    if (scalingCriteria) {
+      // Advance to scaling phase (achieved 2M+ target)
       return FRESHMART_SCENARIOS.scaling_phase;
     } else {
-      // Enter distress phase
+      // Enter distress phase (missed 2M+ target)
       return FRESHMART_SCENARIOS.distress_phase;
     }
   }
   
   // Evaluate final outcome at Month 6
   function evaluateFinalOutcome(currentState) {
-    const finalTarget = currentState.month_target_6; // 4M sales target
     const salesAchieved = currentState.monthly_sales;
-    const targetMet = salesAchieved >= finalTarget;
+    const cashFlowPositive = currentState.monthly_sales > currentState.monthly_expenses;
     
-    if (targetMet && cashFlowPositive && currentState.dead_stock_units < 100) {
+    // Perfect ending: 4M+ sales regardless of debt (debt is a consequence of growth strategy)
+    if (salesAchieved >= 4000000) {
       return FRESHMART_SCENARIOS.ending_success;
-    } else if (salesAchieved >= 3000000 && cashFlowPositive) {
+    } 
+    // Successful ending: 3M+ sales with manageable debt
+    else if (salesAchieved >= 3000000 && currentState.accumulated_debt < 3000000) {
+      return FRESHMART_SCENARIOS.ending_success;
+    } 
+    // Survival ending: 2.7M+ sales with moderate debt
+    else if (salesAchieved >= 2700000 && currentState.accumulated_debt < 5000000) {
       return FRESHMART_SCENARIOS.ending_survival;
-    } else {
+    } 
+    // Failure: Below survival thresholds or excessive debt
+    else {
       return FRESHMART_SCENARIOS.ending_failure;
     }
   }
@@ -1308,6 +1667,7 @@ function FreshMartSim({onBack,onComplete}){
   // Handle continue to next scenario with month progression
   function handleContinue() {
     if (isEnding) {
+      // Complete simulation and switch to results screen
       onComplete && onComplete({
         log: decisionHistory.map(d => ({ action: d.optionLabel, month: d.month })),
         state: state,
@@ -1317,26 +1677,67 @@ function FreshMartSim({onBack,onComplete}){
         caseDiff: "SEED",
         caseType: "simulation",
         caseId: "freshmart-sim",
-        keyInsights: generateKeyInsights(state, decisionHistory)
+        keyInsights: [generateStorytellingContent(state, decisionHistory)]
       });
       return;
     }
     
-    const nextScenario = resolveNextScenario(selectedOption.next, state);
+    // Handle final outcome evaluation at Month 6
+    if (currentMonth >= 6 && !isEnding) {
+      const finalOutcome = evaluateFinalOutcome(state);
+      setCurrentScenario(finalOutcome);
+      return;
+    }
+    
+    // Handle checkpoints - auto-advance without requiring selected option
+    let nextScenario;
+    if (isCheckpoint) {
+      nextScenario = resolveNextScenario(currentScenario.id, state);
+    } else {
+      nextScenario = resolveNextScenario(selectedOption.next, state);
+    }
+    
     setCurrentScenario(nextScenario);
     
-    // Advance month
-    const newMonth = currentMonth + 1;
+    // Advance month (but don't jump from checkpoint to conclusion)
+    let newMonth = currentMonth + 1;
+    
+    // Special handling for benchmark evaluation - place at start of Month 4
+    if (isCheckpoint) {
+      // Benchmark evaluation should be at start of Month 4
+      newMonth = 4; // Set to Month 4 for benchmark evaluation
+    }
+    
+    // Ensure we don't exceed Month 6
+    newMonth = Math.min(newMonth, 6);
+    
     setCurrentMonth(newMonth);
     
     // Apply monthly business operations
     const updatedState = applyMonthlyOperations(state, newMonth);
     
+    // Ensure state.current_month matches React currentMonth
+    updatedState.current_month = newMonth;
+    
+    // Initialize debt tracking if cash runs out
+    if (state.cash_on_hand <= 0 && !updatedState.debt_start_time) {
+      updatedState.debt_start_time = Date.now();
+      updatedState.debt_start_amount = Math.abs(state.cash_on_hand);
+    }
+    
+    // Track escalation stages based on accumulated debt
+    const currentDebt = updatedState.accumulated_debt || 0;
+    if (currentDebt > 0 && !updatedState.escalation_stage) {
+      updatedState.escalation_stage = 1;
+    } else if (currentDebt >= 2000000 && updatedState.escalation_stage < 2) {
+      updatedState.escalation_stage = 2;
+    } else if (currentDebt >= 5000000 && updatedState.escalation_stage < 3) {
+      updatedState.escalation_stage = 3;
+    }
+    
     setState(updatedState);
     setPhase("decision");
     setSelectedOption(null);
-    
-    setTimeout(() => topRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   }
   
   // Apply monthly business operations and updates
@@ -1344,18 +1745,50 @@ function FreshMartSim({onBack,onComplete}){
     const newState = { ...currentState };
     
     // Apply monthly burn (expenses)
-    newState.cash_on_hand = Math.max(0, currentState.cash_on_hand - currentState.monthly_burn);
+    const previousCash = currentState.cash_on_hand;
+    const monthlyExpenses = currentState.monthly_burn;
+    
+    // Calculate if we need to use line of credit
+    let cashAfterExpenses = currentState.cash_on_hand - monthlyExpenses;
+    let loanTakenThisMonth = 0;
+    
+    if (cashAfterExpenses < 0) {
+      // Use line of credit to cover the shortfall
+      loanTakenThisMonth = Math.abs(cashAfterExpenses);
+      cashAfterExpenses = 0;
+      
+      // Add to accumulated debt
+      newState.accumulated_debt = (currentState.accumulated_debt || 0) + loanTakenThisMonth;
+      
+      // Track loan taken for announcement
+      newState.loan_taken_this_month = loanTakenThisMonth;
+      
+      // Apply interest to accumulated debt (15% monthly)
+      newState.accumulated_debt = newState.accumulated_debt * 1.15;
+      
+      // Set cash to 0 (using line of credit)
+      newState.cash_on_hand = 0;
+    } else {
+      newState.cash_on_hand = cashAfterExpenses;
+      newState.loan_taken_this_month = 0;
+    }
+    
+    // Track monthly expense deduction for display
+    newState.monthly_expense_deduction = monthlyExpenses;
+    newState.previous_cash_on_hand = previousCash;
     
     // Update month-specific targets
     if (month >= 4) {
       newState.month_target_6 = 4000000; // Update to Month 6 target
     }
     
-    // Apply some business dynamics based on current state
-    if (currentState.customer_satisfaction > 0.7) {
-      newState.monthly_sales = Math.min(currentState.monthly_sales * 1.1, 5000000);
-    } else if (currentState.customer_satisfaction < 0.3) {
-      newState.monthly_sales = Math.max(currentState.monthly_sales * 0.9, 500000);
+    // Apply some business dynamics based on current state (only after Month 4)
+    if (month >= 4) {
+      if (currentState.customer_satisfaction > 0.7) {
+        newState.monthly_sales = Math.min(currentState.monthly_sales * 1.1, 5000000);
+      } else if (currentState.customer_satisfaction < 0.3) {
+        newState.monthly_sales = Math.max(currentState.monthly_sales * 0.9, 500000);
+      }
     }
     
     // Update derived values
@@ -1365,35 +1798,89 @@ function FreshMartSim({onBack,onComplete}){
     return newState;
   }
   
-  // Generate key insights for LinkedIn card
-  function generateKeyInsights(currentState, decisions) {
-    const insights = [];
+  // Generate storytelling content for LinkedIn card
+  function generateStorytellingContent(currentState, decisions) {
+    const finalSales = currentState.monthly_sales;
+    const initialBurn = 900000; // PKR 900K/month initial burn
+    const finalBurn = currentState.monthly_expenses;
+    const marginChange = ((finalSales / finalBurn) - 1) * 100;
+    const months = currentState.current_month || 6;
     
-    if (currentState.cash_on_hand > 3000000) {
-      insights.push("Strong cash position achieved through strategic decisions");
-    } else if (currentState.cash_on_hand < 1000000) {
-      insights.push("Critical cash flow situation required immediate action");
+    // Crisis Hook - what was broken
+    const crisisHook = `FreshMart was burning ₨${fmtMoney(initialBurn)}/month. `;
+    
+    // Path - key decisions made
+    const pathDecisions = decisions.slice(0, 3).map(d => d.optionLabel).join(", ");
+    const pathText = pathDecisions ? `I ${pathDecisions.toLowerCase()}, and turned crisis into opportunity.` : 'I navigated the crisis through strategic decisions.';
+    
+    // Outcome - results and ending
+    const score = Math.round((finalSales / 4000000) * 100); // Percentage of 4M target
+    const rank = score >= 100 ? "GROWTH" : score >= 75 ? "SCALING" : score >= 50 ? "SURVIVAL" : "DISTRESS";
+    const ending = finalSales >= 4000000 ? "Business Saved" : finalSales >= 2700000 ? "Business Survived" : "Business Failed";
+    
+    return {
+      crisisHook,
+      pathText,
+      score,
+      rank,
+      ending,
+      marginChange: Math.round(marginChange),
+      months
+    };
+  }
+  
+  // Assess decision risk level
+  function assessDecisionRisk(option, currentState) {
+    const effects = option.effect || {};
+    let riskScore = 0;
+    let riskFactors = [];
+    
+    // High cash burn risk
+    if (effects.cash_on_hand && effects.cash_on_hand.includes('-')) {
+      const cashBurn = Math.abs(parseFloat(effects.cash_on_hand));
+      if (cashBurn > 500000) {
+        riskScore += 3;
+        riskFactors.push("MASSIVE CASH BURN");
+      } else if (cashBurn > 300000) {
+        riskScore += 2;
+        riskFactors.push("HIGH CASH BURN");
+      }
     }
     
-    if (currentState.dead_stock_units < 100) {
-      insights.push("Successfully optimized inventory management");
+    // Debt increase risk
+    if (effects.debt_stress && parseFloat(effects.debt_stress) > 0.1) {
+      riskScore += 2;
+      riskFactors.push("DEBT INCREASE");
     }
     
-    if (currentState.customer_satisfaction > 0.8) {
-      insights.push("Customer confidence restored through consistent quality");
+    // Customer satisfaction risk
+    if (effects.customer_satisfaction && effects.customer_satisfaction.includes('-')) {
+      riskScore += 1;
+      riskFactors.push("CUSTOMER DISSATISFACTION");
     }
     
-    if (currentState.debt_stress > 0.6) {
-      insights.push("High debt burden created ongoing financial pressure");
+    // Employee morale risk
+    if (effects.employee_morale && effects.employee_morale.includes('-')) {
+      riskScore += 1;
+      riskFactors.push("STAFF MORALE DECLINE");
     }
     
-    if (currentState.monthly_sales >= currentState.month_target_6) {
-      insights.push("Achieved ambitious growth targets through strategic execution");
-    } else if (currentState.monthly_sales >= currentState.month_target_3) {
-      insights.push("Met initial targets and positioned business for growth");
+    // Expense increase risk
+    if (effects.monthly_expenses && effects.monthly_expenses.includes('+')) {
+      riskScore += 2;
+      riskFactors.push("EXPENSE INCREASE");
     }
     
-    return insights;
+    // Determine risk level
+    if (riskScore >= 5) {
+      return { level: "CRITICAL", factors: riskFactors, color: "#ff0000" };
+    } else if (riskScore >= 3) {
+      return { level: "HIGH", factors: riskFactors, color: "#ff6600" };
+    } else if (riskScore >= 1) {
+      return { level: "MODERATE", factors: riskFactors, color: "#ffaa00" };
+    } else {
+      return { level: "LOW", factors: ["CALCULATED RISK"], color: "#00aa00" };
+    }
   }
   
   // Reset simulation
@@ -1406,8 +1893,19 @@ function FreshMartSim({onBack,onComplete}){
     setSelectedOption(null);
   }
   
+  // Format time display
+  function formatTime(seconds) {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }
+  
   const endColor = currentScenario?.type === "success" ? T.green : currentScenario?.type === "failure" ? T.red : T.gold;
   const endLabel = currentScenario?.type === "success" ? "OPTIMAL RECOVERY" : currentScenario?.type === "failure" ? "BUSINESS FAILURE" : "STRUGGLING BUT SURVIVING";
+  
+  // Timer color based on remaining time
+  const timerColor = timeRemaining <= 30 ? "#ff0000" : timeRemaining <= 60 ? "#ff6600" : "#ffd700";
+  const timerAnimation = timeRemaining <= 30 ? "flash 1s infinite" : timeRemaining <= 60 ? "pulse 2s infinite" : "none";
 
   return (
     <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
@@ -1419,23 +1917,91 @@ function FreshMartSim({onBack,onComplete}){
       }/>
       <div style={{height:3,background:T.muted,flexShrink:0}}><div style={{height:"100%",width:`${Math.min(100,recoveryScore)}%`,background:T.gold,transition:"width .6s ease"}}/></div>
       
+      {/* Stock Market Style Stats Topbar */}
+      <div style={{background:"#1e3a5f",borderBottom:`1px solid ${T.border}`,padding:"12px 20px",overflowX:"auto"}}>
+        <div style={{display:"flex",gap:20,alignItems:"center",minWidth:"max-content"}}>
+          {[
+            {key: "monthly_sales", label: "Sales", icon: "💰", fmt: "money"},
+            {key: "monthly_expenses", label: "Expenses", icon: "📊", fmt: "money"},
+            {key: "cash_on_hand", label: "Cash", icon: "💵", fmt: "money"},
+            {key: "customer_satisfaction", label: "Satisfaction", icon: "😊", fmt: "percent"},
+            {key: "employee_morale", label: "Morale", icon: "👥", fmt: "percent"},
+            {key: "debt_stress", label: "Debt Stress", icon: "⚠️", fmt: "percent"}
+          ].map(stat => {
+            const value = state[stat.key];
+            const meta = FM_STATE_META[stat.key];
+            const displayValue = stat.fmt === "money" ? `PKR ${fmtMoney(value)}` : 
+                               stat.fmt === "percent" ? `${Math.round(value * 100)}%` : value;
+            
+            // Calculate real change indicator
+            const previousValue = state.previous_values?.[stat.key];
+            let change = 0;
+            let changePercent = "0.0%";
+            let changeColor = T.dim;
+            let changeIcon = "→";
+            
+            if (previousValue !== undefined && previousValue !== value) {
+              if (stat.fmt === "money") {
+                const diff = value - previousValue;
+                change = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+                changePercent = change !== 0 ? `${Math.abs((diff / previousValue) * 100).toFixed(1)}%` : "0.0%";
+              } else if (stat.fmt === "percent") {
+                const diff = value - previousValue;
+                change = diff > 0 ? 1 : diff < 0 ? -1 : 0;
+                changePercent = change !== 0 ? `${Math.abs(diff * 100).toFixed(1)}%` : "0.0%";
+              }
+              changeColor = change > 0 ? T.green : change < 0 ? T.red : T.dim;
+              changeIcon = change > 0 ? "▲" : change < 0 ? "▼" : "→";
+            }
+            
+            return (
+              <div key={stat.key} style={{display:"flex",flexDirection:"column",gap:2}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:12}}>{stat.icon}</span>
+                  <span style={{fontFamily:T.mono,fontSize:9,color:"#a8c7ff",letterSpacing:1}}>{stat.label}</span>
+                </div>
+                <div style={{display:"flex",alignItems:"baseline",gap:6}}>
+                  <span style={{fontFamily:T.mono,fontSize:12,color:"#ffffff",fontWeight:600}}>{displayValue}</span>
+                  <span style={{fontFamily:T.mono,fontSize:8,color:changeColor,display:"flex",alignItems:"center",gap:1}}>
+                    {changeIcon}{changePercent}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
       <div ref={topRef} style={{flex:1,display:isMobile?"block":"flex",padding:isMobile?"16px 12px":"20px 16px",gap:20,overflowY:"auto"}}>
         <div style={{flex:1,minWidth:0}}>
           {phase === "decision" && !isEnding && (
             <div>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>
-                {isCheckpoint ? `MONTH ${currentMonth} · SYSTEM CHECKPOINT` : `MONTH ${currentMonth} · SCENARIO`}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontFamily:T.mono,fontSize:8,color:"#a8c7ff",letterSpacing:3}}>
+                  {isCheckpoint ? `MONTH ${currentMonth} · BENCHMARK 1 EVALUATION` : `MONTH ${currentMonth} · SCENARIO`}
+                </div>
+                {timerActive && (
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:"#1a0000",border:"2px solid #ff0000",padding:"6px 12px",borderRadius:"6px"}}>
+                    <span style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1}}>⏰ TIME LIMIT</span>
+                    <span style={{fontFamily:T.mono,fontSize:10,color:timerColor,fontWeight:700,animation:timerAnimation}}>
+                      {formatTime(timeRemaining)}
+                    </span>
+                  </div>
+                )}
               </div>
-              <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:24}}>{currentScenario.description}</div>
+              <div style={{fontFamily:T.sans,fontSize:15,color:"#e8f4ff",lineHeight:1.6,marginBottom:24}}>{currentScenario.description}</div>
               
               {isCheckpoint ? (
-                <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
-                  <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>PERFORMANCE EVALUATION</div>
-                  <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
-                    Current Sales: PKR {fmtMoney(state.monthly_sales)} | Target: PKR {fmtMoney(state.month_target_3)}
-                    {salesTargetProgress >= 1 ? " ✓ TARGET MET" : " ✗ TARGET MISSED"}
+                <>
+                  <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
+                    <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>PERFORMANCE EVALUATION</div>
+                    <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
+                      Current Sales: PKR {fmtMoney(state.monthly_sales)} | Target: PKR {fmtMoney(state.month_target_3)}
+                      {salesTargetProgress >= 1 ? " ✓ TARGET MET" : " ✗ TARGET MISSED"}
+                    </div>
                   </div>
-                </div>
+                  <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO MONTH 4 PHASE →</button>
+                </>
               ) : (
                 <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>
                   {currentScenario.options.length} OPTIONS AVAILABLE
@@ -1443,14 +2009,66 @@ function FreshMartSim({onBack,onComplete}){
               )}
               <div style={{display:"flex",flexDirection:"column",gap:12}}>
                 {currentScenario.options.map((option, i) => (
-                  <div key={option.id} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"18px 20px",cursor:"pointer",transition:"all .15s"}} onClick={() => handleOptionSelect(option)}>
+                  <div key={option.id} style={{background:"#1a0000",border:"2px solid #ff0000",padding:"18px 20px",cursor:"pointer",transition:"all .15s",borderRadius:"8px",position:"relative",overflow:"hidden"}} onClick={() => handleOptionSelect(option)} onMouseEnter={e=>{e.currentTarget.style.borderColor="#ff6600";e.currentTarget.style.background="#2d0000";e.currentTarget.style.boxShadow="0 0 20px rgba(255,0,0,0.3)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="#ff0000";e.currentTarget.style.background="#1a0000";e.currentTarget.style.boxShadow="none";}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:12}}>
                       <div style={{flex:1}}>
-                        <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:2,marginBottom:4}}>OPTION {i + 1}</div>
-                        <div style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.5,fontWeight:600}}>{option.label}</div>
+                        <div style={{fontFamily:T.mono,fontSize:10,color:"#ff6600",letterSpacing:2,marginBottom:4,animation:"pulse 2s infinite"}}>⚠️ OPTION {i + 1}</div>
+                        <div style={{fontFamily:T.sans,fontSize:13,color:"#ffcccc",lineHeight:1.5,fontWeight:600}}>{option.label}</div>
                       </div>
-                      <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,whiteSpace:"nowrap"}}>SELECT →</div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:"#ff9999",whiteSpace:"nowrap",animation:"flash 1s infinite"}}>DANGER →</div>
                     </div>
+                    {option.effect && Object.keys(option.effect).length > 0 && (
+                      <div style={{marginTop:12,paddingTop:12,borderTop:"2px solid #ff0000"}}>
+                        <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:6,animation:"pulse 1.5s infinite"}}>⚡ DANGER ANALYSIS</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                          {/* Benefits */}
+                          <div>
+                            <div style={{fontFamily:T.mono,fontSize:7,color:"#00ff00",letterSpacing:1,marginBottom:4}}>💊 GAINS (Temporary)</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                              {Object.entries(option.effect).map(([key, value]) => {
+                                const effectLabel = FM_STATE_META[key]?.label || key;
+                                const isPositive = typeof value === 'string' && value.startsWith('+');
+                                
+                                if (isPositive) {
+                                  return (
+                                    <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:9}}>
+                                      <span style={{fontFamily:T.sans,color:"#ffaaaa"}}>{effectLabel}</span>
+                                      <span style={{fontFamily:T.mono,color:"#00ff00",fontWeight:600,animation:"flash 2s infinite"}}>
+                                        {typeof value === 'string' ? value.replace('+', '+') : value}
+                                      </span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                          </div>
+                          
+                          {/* Risks */}
+                          <div>
+                            <div style={{fontFamily:T.mono,fontSize:7,color:"#ff0000",letterSpacing:1,marginBottom:4,animation:"flash 1s infinite"}}>☠️ CONSEQUENCES (Permanent)</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                              {Object.entries(option.effect).map(([key, value]) => {
+                                const effectLabel = FM_STATE_META[key]?.label || key;
+                                const isNegative = typeof value === 'string' && value.startsWith('-');
+                                
+                                if (isNegative) {
+                                  return (
+                                    <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:9}}>
+                                      <span style={{fontFamily:T.sans,color:"#ffaaaa"}}>{effectLabel}</span>
+                                      <span style={{fontFamily:T.mono,color:"#ff0000",fontWeight:600,animation:"pulse 1s infinite"}}>
+                                        {typeof value === 'string' ? value.replace('-', '−') : value}
+                                      </span>
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -1468,6 +2086,17 @@ function FreshMartSim({onBack,onComplete}){
                 <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
                   Your decision has been implemented. Review the state changes and continue to the next scenario.
                 </div>
+                {state.monthly_expense_deduction > 0 && (
+                  <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
+                    <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTHLY EXPENSES</div>
+                    <div style={{fontFamily:T.sans,fontSize:10,color:"#666",lineHeight:1.4}}>
+                      Monthly expenses of PKR {fmtMoney(state.monthly_expense_deduction)} have been deducted from cash on hand
+                    </div>
+                    <div style={{fontFamily:T.mono,fontSize:9,color:T.dim,marginTop:4}}>
+                      Previous: PKR {fmtMoney(state.previous_cash_on_hand)} → Current: PKR {fmtMoney(state.cash_on_hand)}
+                    </div>
+                  </div>
+                )}
               </div>
               
               <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO NEXT SCENARIO →</button>
@@ -1505,44 +2134,272 @@ function FreshMartSim({onBack,onComplete}){
         </div>
 
         <div style={{width:isMobile?"100%":268,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?"16px 12px":"20px 16px",flexShrink:0}}>
-          <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>BUSINESS METRICS</div>
+          <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>ANNOUNCEMENTS</div>
           
-          {[
-            {key: "monthly_sales", label: "Monthly Sales", icon: "💰", fmt: "money"},
-            {key: "monthly_expenses", label: "Monthly Expenses", icon: "📊", fmt: "money"},
-            {key: "cash_on_hand", label: "Cash on Hand", icon: "💵", fmt: "money"},
-            {key: "profit_margin", label: "Profit Margin", icon: "📈", fmt: "pct"},
-            {key: "dead_stock_units", label: "Dead Stock Units", icon: "📦", fmt: "num"},
-            {key: "customer_footfall", label: "Daily Footfall", icon: "👥", fmt: "num"},
-            {key: "customer_satisfaction", label: "Customer Satisfaction", icon: "😊", fmt: "pct"},
-            {key: "employee_morale", label: "Employee Morale", icon: "👨‍💼", fmt: "pct"}
-          ].map(({key, label, icon, fmt, custom}) => {
-            const value = custom !== undefined ? custom : state[key];
-            const meta = FM_STATE_META[key];
-            
-            return(
-              <div key={key} style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"9px 12px",marginBottom:6}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{icon} {label}</span>
-                  <span style={{fontFamily:T.mono,fontSize:9,color:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,fontWeight:700}}>
-                    {fmt === "money" ? `PKR ${fmtMoney(value)}` : fmt === "pct" ? `${Math.round(value * 100)}%` : value}
-                  </span>
-                </div>
-                {fmt === "pct" && (
-                  <div style={{height:3,background:T.muted,marginTop:4}}>
-                    <div style={{height:"100%",width:`${Math.min(100,value * 100)}%`,background:meta?.good==="high"?T.green:meta?.good==="low"?T.red:T.gold,transition:"width .8s"}}/>
+          {/* CRITICAL CASH ALERT */}
+          {state.cash_on_hand <= 0 && (
+            <div style={{background:"#2d0000",border:"2px solid #ff0000",padding:"12px",marginBottom:12,animation:"pulse 2s infinite"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:14,marginTop:1,color:"#ff0000"}}>🚨</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",letterSpacing:1,marginBottom:4}}>RED ALERT - CASH CRISIS</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
+                    <strong>CASH RESERVES DEPLETED!</strong> Used line of credit to pay expenses. Interest accumulating daily.
                   </div>
-                )}
+                </div>
               </div>
-            );
-          })}
+            </div>
+          )}
+
+          {/* LINE OF CREDIT TICKING BOMB */}
+          {state.accumulated_debt > 0 && (
+            <div style={{background:"#1a0000",border:"2px solid #ff6600",padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:14,marginTop:1,color:"#ff6600",animation:"pulse 1s infinite"}}>💣</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:4}}>
+                    {state.escalation_stage === 1 ? "Stage 1 → Pressure Building" :
+                     state.escalation_stage === 2 ? "Stage 2 → System Strain" :
+                     state.escalation_stage === 3 ? "Stage 3 → Critical Failure Risk" : "TICKING BOMB - COMPOUNDING DEBT"}
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffaa99",lineHeight:1.4}}>
+                    Accumulated Debt: <strong>PKR {fmtMoney(state.accumulated_debt)}</strong>
+                  </div>
+                  <div style={{fontFamily:T.mono,fontSize:9,color:"#ff8800",marginTop:4}}>
+                    + PKR {fmtMoney(state.accumulated_debt * 0.15)}/month interest
+                  </div>
+                  {state.escalation_stage < 3 && (
+                    <div style={{fontFamily:T.mono,fontSize:8,color:"#ffaa99",marginTop:2}}>
+                      ⏳ Next escalation in {3 - state.escalation_stage} turns
+                    </div>
+                  )}
+                  {state.escalation_stage === 3 && (
+                    <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",marginTop:2,animation:"flash 0.5s infinite"}}>
+                      😄 IMMINENT COLLAPSE - ACT NOW OR DIE
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* LOAN TAKEN ANNOUNCEMENT */}
+          {state.loan_taken_this_month > 0 && (
+            <div style={{background:"#1a0000",border:"2px solid #ff6600",padding:"12px",marginBottom:12,animation:"flash 2s infinite"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:14,marginTop:1,color:"#ff6600"}}>💳</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:4}}>LINE OF CREDIT USED</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
+                    <strong>Loan Taken: PKR {fmtMoney(state.loan_taken_this_month)}</strong>
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ffaaaa",marginTop:4}}>
+                    Insufficient cash to cover expenses. Line of credit activated with 15% monthly interest.
+                  </div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
+                    This loan will compound monthly and increase your debt burden.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* PERMANENT CONSEQUENCES */}
+          {Object.entries(permanentConsequences).map(([type, consequence]) => (
+            <div key={type} style={{background:"#1a0000",border:"2px solid #ff0000",padding:"12px",marginBottom:12,animation:consequence.severity === 'ESCALATED' ? "flash 1s infinite" : "pulse 2s infinite"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:14,marginTop:1,color:"#ff0000"}}>🔴</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",letterSpacing:1,marginBottom:4}}>
+                    {consequence.name} ({consequence.severity})
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
+                    {consequence.description}
+                  </div>
+                  <div style={{fontFamily:T.mono,fontSize:9,color:"#ff6600",marginTop:4}}>
+                    Penalty increased by {Math.round((consequence.penalty - 1) * 100)}%
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
+                    {consequence.severity === 'ESCALATED' ? 'Getting worse each month...' : 'Permanent business damage'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          {/* DECISION RISK WARNING */}
+          {state.last_decision_risk && state.last_decision_risk.risk.level !== "LOW" && (
+            <div style={{background:"#1a0000",border:`2px solid ${state.last_decision_risk.risk.color}`,padding:"12px",marginBottom:12,animation:"pulse 1.5s infinite"}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:14,marginTop:1,color:state.last_decision_risk.risk.color}}>⚠️</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:state.last_decision_risk.risk.color,letterSpacing:1,marginBottom:4}}>
+                    {state.last_decision_risk.risk.level} RISK - DECISION CONSEQUENCES
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
+                    <strong>Month {state.last_decision_risk.month} Decision:</strong> "{state.last_decision_risk.option}"
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ffaaaa",marginTop:4}}>
+                    Risk Factors: {state.last_decision_risk.risk.factors.join(" • ")}
+                  </div>
+                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
+                    This decision may lead to business failure if not managed carefully.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Monthly Expense Notice */}
+          {state.monthly_expense_deduction > 0 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.gold}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>💸</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:1,marginBottom:4}}>MONTHLY EXPENSES</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    Monthly expenses of PKR {fmtMoney(state.monthly_expense_deduction)} have been deducted from cash on hand.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           
-          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
-            📊 Target: PKR {fmtMoney(currentMonth <= 3 ? state.month_target_3 : state.month_target_6)} by Month {currentMonth <= 3 ? 3 : 6}
+          {/* Supplier Pressure Notice */}
+          {currentMonth >= 2 && state.debt_stress > 0.6 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.red}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>⚠️</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:1,marginBottom:4}}>SUPPLIER PRESSURE</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    Suppliers are pressing for loan payments. High debt stress affecting business operations.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Customer Feedback Notice */}
+          {state.customer_satisfaction < 0.4 && currentMonth >= 2 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.blue}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>📢</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.blue,letterSpacing:1,marginBottom:4}}>CUSTOMER FEEDBACK</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    Customer satisfaction is low. Reviews indicate quality and service issues need attention.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Employee Morale Notice */}
+          {state.employee_morale < 0.3 && currentMonth >= 3 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.orange}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>👥</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.orange,letterSpacing:1,marginBottom:4}}>STAFF MORALE</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    Employee morale is declining. Staff are expressing concerns about job security and working conditions.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Dead Stock Alert */}
+          {state.dead_stock_units > 150 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.red}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>📦</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:1,marginBottom:4}}>INVENTORY ALERT</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    High dead stock levels ({state.dead_stock_units} units). Storage costs are increasing and cash is tied up.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Positive Performance Notice */}
+          {state.monthly_sales >= state.month_target_3 && currentMonth <= 3 && (
+            <div style={{background:T.surf2,border:`1px solid ${T.green}`,padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2}}>🎉</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.green,letterSpacing:1,marginBottom:4}}>PERFORMANCE UPDATE</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                    Excellent progress! Monthly sales target of PKR {fmtMoney(state.month_target_3)} has been achieved.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* SYSTEM JUDGMENT */}
+          {currentMonth >= 3 && decisionHistory.length >= 2 && (
+            <div style={{background:"#0d1117",border:"2px solid #3b82f6",padding:"12px",marginBottom:12}}>
+              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+                <span style={{fontSize:12,marginTop:2,color:"#3b82f6"}}>📊</span>
+                <div>
+                  <div style={{fontFamily:T.mono,fontSize:8,color:"#3b82f6",letterSpacing:1,marginBottom:4}}>SYSTEM ANALYSIS</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:"#a8c7ff",lineHeight:1.4}}>
+                    {decisionHistory.length >= 2 && decisionHistory[0]?.optionLabel && (
+                      <div>
+                        {decisionHistory[0].optionLabel.includes("Inventory Clearance") && (
+                          <div>
+                            <strong>You prioritized cost-cutting over service</strong>
+                            <div style={{marginTop:4,color:"#ff6600"}}>Result: customer churn + revenue risk</div>
+                          </div>
+                        )}
+                        {decisionHistory[0].optionLabel.includes("Expansion") && (
+                          <div>
+                            <strong>You prioritized growth over stability</strong>
+                            <div style={{marginTop:4,color:"#ffaa00"}}>Result: cash strain + operational complexity</div>
+                          </div>
+                        )}
+                        {decisionHistory[0].optionLabel.includes("Marketing") && (
+                          <div>
+                            <strong>You prioritized visibility over efficiency</strong>
+                            <div style={{marginTop:4,color:"#ffaa00"}}>Result: brand awareness + diminishing returns</div>
+                          </div>
+                        )}
+                        {decisionHistory[1]?.optionLabel && decisionHistory[1].optionLabel.includes("Poor Allocation") && (
+                          <div>
+                            <strong>You made reactive decisions under pressure</strong>
+                            <div style={{marginTop:4,color:"#ff0000"}}>Result: scattered resources + missed opportunities</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    <div style={{marginTop:6,fontStyle:"italic",color:"#9ca3af"}}>
+                      You're learning strategy subconsciously through consequences.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Default Notice */}
+          <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"12px",marginBottom:12}}>
+            <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
+              <span style={{fontSize:12,marginTop:2}}>📋</span>
+              <div>
+                <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>BUSINESS UPDATE</div>
+                <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
+                  FreshMart operations continue. Monitor key metrics and make strategic decisions to achieve growth targets.
+                </div>
+              </div>
+            </div>
           </div>
           
           <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
-            💡 Each decision shapes the future path. Choose carefully.
+            📢 Check announcements regularly for important business updates and alerts.
           </div>
         </div>
       </div>
@@ -2097,11 +2954,16 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
               <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#aaa",letterSpacing:2,marginTop:2}}>SCORE</div>
               <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:10,color:displayGC,fontWeight:800,marginTop:4,letterSpacing:1}}>{displayGrade}</div>
             </>}
-            {isSimResult&&<>
-              <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:displayGC,fontWeight:900,lineHeight:1.2,marginBottom:4}}>{displayGrade}</div>
-              <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#aaa",letterSpacing:2}}>OUTCOME</div>
-              <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:9,color:"#888",marginTop:4}}>{simPath.length} moves</div>
-            </>}
+            {isSimResult&&(
+              <>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:displayGC,fontWeight:900,lineHeight:1.4,marginBottom:8}}>
+                  {generateStorytellingContent(state, decisionHistory).crisisHook}
+                  {generateStorytellingContent(state, decisionHistory).pathText}
+                  {generateStorytellingContent(state, decisionHistory).marginChange > 0 ? `and turned ${Math.round(generateStorytellingContent(state, decisionHistory).marginChange)}% margin into ${Math.round(generateStorytellingContent(state, decisionHistory).score)}% in ${generateStorytellingContent(state, decisionHistory).months} months.` : `and ${generateStorytellingContent(state, decisionHistory).ending.toLowerCase()}.`}
+                </div>
+                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#aaa",letterSpacing:2}}>OUTCOME</div>
+              </>
+            )}
           </div>
           {/* Company info */}
           <div style={{flex:1}}>
@@ -2122,9 +2984,8 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
                 </div>
               ))}
               {isSimResult&&[
-                {l:"Decisions",v:simPath.length},
-                {l:"Months",v:simPath[simPath.length-1]?.month||"—"},
-                {l:"Path",v:displayGrade},
+                {l:"Score",v:`${Math.round(generateStorytellingContent(state, decisionHistory).score)}%`},
+                {l:"Rank",v:generateStorytellingContent(state, decisionHistory).rank},
               ].map(({l,v})=>(
                 <div key={l} style={{background:"#eeede8",padding:"4px 10px",borderRadius:2}}>
                   <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#aaa",letterSpacing:1}}>{l.toUpperCase()}</div>
@@ -2152,14 +3013,16 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
       <div style={{padding:"16px 24px",background:"#fff",borderBottom:"1px solid #eeeee8"}}>
         <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#bbb",letterSpacing:2,marginBottom:12}}>KEY ANALYTICAL INSIGHTS</div>
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {keyInsightLines.slice(0,isSimResult?5:4).map((ins,i)=>{
+          {(keyInsightLines||[]).slice(0,isSimResult?5:4).map((ins,i)=>{
             const text = typeof ins==="string" ? ins : String(ins);
             return(
               <div key={i} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
-                <div style={{width:20,height:20,background:displayGC,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,borderRadius:2,marginTop:1}}>
+                <div style={{width:20,height:20,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,borderRadius:2,marginTop:1}}>
                   <span style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,fontWeight:700,color:"#000"}}>{i+1}</span>
                 </div>
-                <p style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11.5,color:"#444",lineHeight:1.65,margin:0,flex:1}}>{text.replace(/…$/,"")}</p>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11.5,color:"#444",lineHeight:1.65,margin:0,flex:1}}>{text.replace(/…$/,"")}</div>
+                </div>
               </div>
             );
           })}
@@ -2295,6 +3158,58 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
 
   const synopsis  = CASE_SYNOPSIS_SHORT[caseId] || (caseData?.synopsis ? `${caseData.synopsis.slice(0,200)}…` : "");
   const concepts  = CASE_CONCEPTS[caseId] || [];
+
+  // Download LinkedIn card as PNG
+  function downloadLinkedInCard() {
+    const cardElement = cardRef.current;
+    if (!cardElement) return;
+    
+    // Add delay for Google Fonts to load
+    setTimeout(() => {
+      html2canvas(cardElement, {
+        backgroundColor: '#ffffff',
+        scale: 2,
+        useCORS: true,
+        allowTaint: false,
+        foreignObjectRendering: false,
+        logging: false,
+        width: cardElement.offsetWidth,
+        height: cardElement.offsetHeight
+      }).then(canvas => {
+        const dataUrl = canvas.toDataURL('image/png', 0.95);
+        const a = document.createElement('a');
+        a.href = dataUrl;
+        a.download = `ca-arena-${company.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-linkedin-card.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }).catch(error => {
+        console.error('Error generating LinkedIn card:', error);
+        // Fallback: try with allowTaint: true if the first attempt fails
+        html2canvas(cardElement, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          useCORS: false,
+          allowTaint: true,
+          foreignObjectRendering: false,
+          logging: false,
+          width: cardElement.offsetWidth,
+          height: cardElement.offsetHeight
+        }).then(canvas => {
+          const dataUrl = canvas.toDataURL('image/png', 0.95);
+          const a = document.createElement('a');
+          a.href = dataUrl;
+          a.download = `ca-arena-${company.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-linkedin-card.png`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        }).catch(fallbackError => {
+          console.error('Fallback also failed:', fallbackError);
+          alert('Unable to generate LinkedIn card. Please try again or contact support.');
+        });
+      });
+    }, 500); // 500ms delay for fonts to load
+  }
 
   async function downloadCardPng(){
     const node = cardRef.current;
@@ -2508,20 +3423,9 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
               </div>
             )}
 
-            {/* Sim decision log */}
-            {isSimResult&&simResult.log&&(
-              <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"18px 20px",marginBottom:14}}>
-                <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>DECISIONS LOG</div>
-                {simResult.log.map((e,i)=>(
-                  <div key={i} style={{display:"flex",gap:10,alignItems:"center",padding:"7px 0",borderBottom:i<simResult.log.length-1?`1px solid ${T.muted}`:"none"}}>
-                    <div style={{width:18,height:18,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>{i+1}</span></div>
-                    <div style={{flex:1}}><div style={{fontFamily:T.sans,fontSize:12,color:"#bbb"}}>{e.label}</div><div style={{fontFamily:T.mono,fontSize:8,color:T.muted}}>Month {e.month}</div></div>
-                  </div>
-                ))}
-              </div>
-            )}
-
+            
             <button onClick={()=>setTab("linkedin")} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2}}>GENERATE LINKEDIN CARD →</button>
+            <button onClick={downloadLinkedInCard} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,marginTop:8}}>DOWNLOAD PNG →</button>
           </div>
         )}
 
@@ -2592,8 +3496,110 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
           </div>
         )}
         {tab==="breakdown"&&isSimResult&&(
-          <div style={{animation:"fadeUp .3s both",fontFamily:T.sans,fontSize:13,color:T.dim,padding:"16px 0",lineHeight:1.7}}>
-            The decision breakdown for simulation cases is visible in the Results tab and embedded in the LinkedIn card. Each decision and its consequence are recorded in the path.
+          <div style={{animation:"fadeUp .3s both"}}>
+            <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:2,marginBottom:16}}>DECISION PATH TAKEN</div>
+            {simResult.log && simResult.log.length > 0 ? (
+              <div style={{display:"flex",flexDirection:"column",gap:12}}>
+                {simResult.log.map((decision, i) => (
+                  <div key={i} style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px",display:"flex",gap:12,alignItems:"flex-start"}}>
+                    <div style={{width:24,height:24,background:T.gold,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,borderRadius:"50%"}}>
+                      <span style={{fontFamily:T.mono,fontSize:10,color:"#000",fontWeight:700}}>{i+1}</span>
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,fontWeight:600,marginBottom:4,lineHeight:1.4}}>{decision.action}</div>
+                      <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:1}}>MONTH {decision.month || "?"}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{fontFamily:T.sans,fontSize:13,color:T.dim,padding:"16px 0",lineHeight:1.7}}>
+                No decision path recorded for this simulation.
+              </div>
+            )}
+            
+            {simResult.state && (
+              <div style={{marginTop:32}}>
+                <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:2,marginBottom:16}}>FINAL BUSINESS STATE</div>
+                <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:16}}>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTHLY SALES</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>PKR {fmtMoney(simResult.state.monthly_sales || 0)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>CASH ON HAND</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>PKR {fmtMoney(simResult.state.cash_on_hand || 0)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>PROFIT MARGIN</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>{((simResult.state.profit_margin || 0) * 100).toFixed(1)}%</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>DEAD STOCK UNITS</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>{simResult.state.dead_stock_units || 0}</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            {simResult.state && (
+              <div style={{marginTop:32}}>
+                <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,letterSpacing:2,marginBottom:16}}>GROWTH CONTRIBUTION BREAKDOWN</div>
+                <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"16px 18px"}}>
+                  <div style={{fontFamily:T.sans,fontSize:12,color:T.dim,marginBottom:16,lineHeight:1.5}}>
+                    Your final sales result was built through compound growth. Each decision contributed to multipliers that compounded over time:
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(250px,1fr))",gap:16}}>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>BASE SALES</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>PKR {fmtMoney(simResult.state.growth_base || 280000)}</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>FOOTFALL MULTIPLIER</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>{(simResult.state.footfall_multiplier || 1.0).toFixed(2)}x</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>CONVERSION MULTIPLIER</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>{(simResult.state.conversion_multiplier || 1.0).toFixed(2)}x</div>
+                    </div>
+                    <div>
+                      <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MOMENTUM MULTIPLIER</div>
+                      <div style={{fontFamily:T.mono,fontSize:14,color:T.txt,fontWeight:700}}>{(simResult.state.momentum_multiplier || 1.0).toFixed(2)}x</div>
+                    </div>
+                  </div>
+                  
+                  <div style={{marginTop:20,paddingTop:20,borderTop:`1px solid ${T.border}`}}>
+                    <div style={{fontFamily:T.mono,fontSize:9,color:T.gold,letterSpacing:1,marginBottom:12}}>MONTHLY DECISION IMPACT</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:12}}>
+                      <div>
+                        <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTH 1 IMPACT</div>
+                        <div style={{fontFamily:T.mono,fontSize:12,color:simResult.state.month1_decision_impact > 0 ? T.green : T.red,fontWeight:700}}>
+                          {simResult.state.month1_decision_impact > 0 ? "+" : ""}PKR {fmtMoney(simResult.state.month1_decision_impact || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTH 2 IMPACT</div>
+                        <div style={{fontFamily:T.mono,fontSize:12,color:simResult.state.month2_decision_impact > 0 ? T.green : T.red,fontWeight:700}}>
+                          {simResult.state.month2_decision_impact > 0 ? "+" : ""}PKR {fmtMoney(simResult.state.month2_decision_impact || 0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTH 3 IMPACT</div>
+                        <div style={{fontFamily:T.mono,fontSize:12,color:simResult.state.month3_decision_impact > 0 ? T.green : T.red,fontWeight:700}}>
+                          {simResult.state.month3_decision_impact > 0 ? "+" : ""}PKR {fmtMoney(simResult.state.month3_decision_impact || 0)}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{fontFamily:T.sans,fontSize:11,color:T.dim,marginTop:12,lineHeight:1.4}}>
+                      <strong>Compound Formula:</strong> Base × Footfall × Conversion × Momentum = Final Sales<br/>
+                      <strong>Your Result:</strong> PKR {fmtMoney(simResult.state.growth_base || 280000)} × {(simResult.state.footfall_multiplier || 1.0).toFixed(2)} × {(simResult.state.conversion_multiplier || 1.0).toFixed(2)} × {(simResult.state.momentum_multiplier || 1.0).toFixed(2)} = PKR {fmtMoney(simResult.state.monthly_sales || 0)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
