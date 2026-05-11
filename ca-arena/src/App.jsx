@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, createContext, useContext } from "react";
 import { supabase } from "./lib/supabase";
 import html2canvas from 'html2canvas';
-
+import { generateFreshMartSession, startSession, loadSession, saveDecision, completeSession } from './lib/generateFreshMartSession';
+import Grimoire, { upsertGrimoireFromCase } from './components/Grimoire';
 /* ═══════════════════════════════════════════════════════════════════
    SUPABASE CONFIG  ← paste your real values here
    Supabase Dashboard → Settings → API
@@ -12,19 +13,19 @@ import html2canvas from 'html2canvas';
 const UserCtx = createContext(null);
 function useUser(){ return useContext(UserCtx); }
 
-const XP_REWARD = { SEED:80, GROWTH:150, APEX:250 };
-const XP_PER_LEVEL = 300; // Merit rule: every 300 XP = +1 level
-function xpToRank(xp){ return xp>=10000?"APEX":xp>=5000?"GROWTH":"SEED"; }
-function xpToLevel(xp){ return Math.max(1, Math.floor((Number(xp)||0)/XP_PER_LEVEL)+1); }
+const XP_REWARD = { SEED:50, GROWTH:100, APEX:200, DECISION:10 };
+// Removed level logic for now - will rebuild later
+function xpToRank(xp){ return xp>=2000?"APEX":xp>=800?"GROWTH":"SEED"; }
+function xpToLevel(xp){ return Math.max(1, Math.floor((Number(xp)||0)/200)+1); } // Simplified for display
 function xpToRankMeta(xp){
   const safeXp = Number(xp)||0;
   const tier = xpToRank(safeXp);
   const level = xpToLevel(safeXp);
-  return { tier, level, label:`${tier} · Lv ${level}` };
+  return { tier, level, label:`${tier}` };
 }
-const DIFF_UNLOCK_LEVEL = { SEED:1, GROWTH:6, APEX:14 };
+const DIFF_UNLOCK_LEVEL = { SEED:1, GROWTH:4, APEX:8 };
 function canAccessDifficulty(xp, diff){
-  return xpToLevel(xp) >= (DIFF_UNLOCK_LEVEL[diff]||1);
+  return true; // Remove level restrictions for now
 }
 
 
@@ -47,12 +48,22 @@ const T = {
   blue:"#3B82F6",
   green:"#10B981",
   red:"#F43F5E",
+  muted:  "#3A3A3A",
+  goldM:  "#D4AF3788",
+  purple: "#8B5CF6",
+  sans:   "'IBM Plex Sans', sans-serif",
+  serif:  "'Playfair Display', serif",
+  mono:   "'IBM Plex Mono', monospace",
 };
 const DC = { SEED:"#3DEB8A", GROWTH:"#F4C430", APEX:"#FF5252" };
 
 const css = `
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&family=Playfair+Display:wght@700;900&display=swap');
 *{box-sizing:border-box;margin:0;padding:0;}
+@keyframes spriteIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes dialogueIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+@keyframes screenShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@keyframes xpPop{0%{opacity:0;transform:translateY(0) scale(.8)}40%{opacity:1;transform:translateY(-20px) scale(1.15)}100%{opacity:0;transform:translateY(-44px) scale(.9)}}
 @keyframes ticker{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.18}}
 @keyframes fadeUp{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
@@ -682,6 +693,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "online_channels",
         label: "Launch Online Channels - Delivery, e-commerce platform",
+        xp: 60,
         effect: {
           customer_footfall: "+50",
           monthly_sales: "+500000",
@@ -692,6 +704,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "private_label",
         label: "Develop Private Label Products - Higher margins, brand control",
+        xp: 50,
         effect: {
           profit_margin: "+0.15",
           monthly_sales: "+300000",
@@ -702,6 +715,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "customer_retention",
         label: "Customer Retention Strategy - Loyalty programs, subscription services",
+        xp: 55,
         effect: {
           customer_satisfaction: "+0.3",
           monthly_sales: "+400000",
@@ -712,6 +726,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "bulk_deals",
         label: "Bulk Purchase Deals - Negotiate volume discounts with suppliers",
+        xp: 40,
         effect: {
           monthly_expenses: "-100000",
           supplier_relations: "+0.2",
@@ -831,6 +846,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "operational_efficiency",
         label: "Operational Efficiency - Streamline processes, reduce waste",
+        xp: 30,
         effect: {
           monthly_expenses: "-200000",
           inventory_turnover: "+0.3",
@@ -842,11 +858,12 @@ const FRESHMART_SCENARIOS = {
       {
         id: "strategic_partnership",
         label: "Strategic Partnership - Collaborate with complementary businesses",
+        xp: 45,
         effect: {
-          customer_footfall: "+60",
-          monthly_sales: "+700000",
+          monthly_expenses: "-150000",
           supplier_relations: "+0.3",
-          cash_on_hand: "-300000"
+          monthly_sales: "+500000",
+          profit_margin: "+0.1"
         },
         next: "month6_final"
       }
@@ -861,6 +878,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "final_push",
         label: "Final Evaluation - Review performance and determine outcome",
+        xp: 25,
         effect: {},
         next: "ending_evaluation"
       }
@@ -1297,6 +1315,7 @@ function LeaderboardPanel({leaderboard,currentUserId,loading}){
             <div style={{textAlign:"right",flexShrink:0}}>
               <div style={{fontFamily:T.mono,fontSize:10,color:"#777",fontWeight:700}}>{p.xp.toLocaleString()}</div>
               <div style={{fontFamily:T.mono,fontSize:8,color:T.green}}>+{p.xp_gained_today||0}</div>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold}}>{p.commission||0} commission</div>
             </div>
           </div>
         );
@@ -1384,1023 +1403,843 @@ function AnimStat({value,prevValue,statKey}){
   return <span style={{color:flash==="up"?T.green:flash==="down"?T.red:hc,transition:"color .3s",fontFamily:T.mono,fontWeight:700,fontSize:13}}>{formatted}</span>;
 }
 
-function FreshMartSim({onBack,onComplete}){
-  // Month-based business simulation state
-  const [state, setState] = useState({...FM_INITIAL_STATE});
-  const [currentMonth, setCurrentMonth] = useState(1);
-  const [phase, setPhase] = useState("decision"); // "decision" | "result" | "ending"
-  const [selectedOption, setSelectedOption] = useState(null);
-  const [decisionHistory, setDecisionHistory] = useState([]);
-  const [isMobile, setIsMobile] = useState(false);
-  const [timeRemaining, setTimeRemaining] = useState(120); // 2 minutes in seconds
-  const [timerActive, setTimerActive] = useState(false);
-  const [monthStartTime, setMonthStartTime] = useState(null);
-  const [currentScenario, setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
-  const [permanentConsequences, setPermanentConsequences] = useState({}); // Track permanent consequences and penalties
-  
+/**
+ * ═══════════════════════════════════════════════════════════════════
+ *  FRESHMART SIM — COMPLETE IMMERSIVE VERSION
+ *  Drop-in replacement for FreshMartSim in App.jsx
+ *
+ *  HOW TO INTEGRATE:
+ *  1. Delete the old FreshMartSim function and all its helpers
+ *     from App.jsx (lines ~1402–2450).
+ *  2. Paste this entire file's contents in their place.
+ *  3. Add to the `css` const at line 60 in App.jsx:
+ *       @keyframes spriteIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+ *       @keyframes dialogueIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+ *       @keyframes screenShake{0%,100%{transform:translateX(0)}20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+ *       @keyframes xpPop{0%{opacity:0;transform:translateY(0) scale(.8)}40%{opacity:1;transform:translateY(-20px) scale(1.15)}100%{opacity:0;transform:translateY(-44px) scale(.9)}}
+ *
+ *  IMAGE FILES — place in /public/freshmart/:
+ *    Image 1 → imran_neutral.png
+ *    Image 2 → imran_concerned.png
+ *    Image 3 → imran_confident.png
+ *    Image 5 → imran_thinking.png
+ *    Image 6 → imran_angry.png
+ *    Image 7 → imran_confronting.png
+ *    Image 9 → imran_desperate.png
+ *    Image 8 → store_empty.jpg   (background)
+ *    Image 4 → back_office.jpg   (supplier/meeting background)
+ * ═══════════════════════════════════════════════════════════════════
+ */
+
+// ─── Asset maps ────────────────────────────────────────────────────
+const FM_SPRITES = {
+  neutral:     "/freshmart/imran_neutral.png",
+  concerned:   "/freshmart/imran_concerned.png",
+  confident:   "/freshmart/imran_confident.png",
+  thinking:    "/freshmart/imran_thinking.png",
+  angry:       "/freshmart/imran_angry.png",
+  confronting: "/freshmart/imran_confronting.png",
+  desperate:   "/freshmart/imran_desperate.png",
+};
+
+const FM_BACKGROUNDS = {
+  store:       "/freshmart/store_empty.jpg",
+  back_office: "/freshmart/back_office.jpg",
+};
+
+// ─── Dialogue scripts per scenario ────────────────────────────────
+const FM_DIALOGUE = {
+  start: [
+    { speaker:"narrator", bg:"store",
+      text:"Lahore, 9 AM. You step into Imran's General Store for your first day as a CA intern. The fluorescent light flickers. Something is wrong." },
+    { speaker:"owner", expression:"desperate", bg:"store",
+      text:"Acha hua aa gaye. I've been here since Fajr. Sit down — you need to see these numbers." },
+    { speaker:"owner", expression:"thinking",
+      text:"Rafiq — my head cashier, eight years with me — he's gone. And PKR 3.2 million went with him." },
+    { speaker:"owner", expression:"concerned",
+      text:"I have 400 SKUs sitting on shelves that haven't moved in three months. Dead stock. Cash locked, going nowhere." },
+    { speaker:"owner", expression:"desperate",
+      text:"Rent is PKR 400,000. Salaries PKR 450,000. Electricity PKR 50,000. Every month — whether we sell or not." },
+    { speaker:"narrator",
+      text:"Monthly sales: PKR 1M. Monthly burn: PKR 900K. Margin: 10%. The math barely works — and that was before the theft." },
+    { speaker:"owner", expression:"concerned",
+      text:"I invested PKR 30 million. My retirement. My children's future. I need PKR 2M by Month 3 and PKR 4M by Month 6. Tell me — what do we do first?" },
+  ],
+  layoff_decision: [
+    { speaker:"narrator", text:"You recommend cutting the salary bill. The owner stares at the staff roster." },
+    { speaker:"owner", expression:"thinking",
+      text:"Some of these boys have been with me five, six years. But you're right — we can't afford to be sentimental right now." },
+    { speaker:"owner", expression:"concerned",
+      text:"How deep do we cut? Enough to survive, or enough to actually fix the numbers?" },
+  ],
+  loan_decision: [
+    { speaker:"narrator", bg:"back_office", text:"You call the bank. The relationship manager arrives within the hour." },
+    { speaker:"owner", expression:"thinking", bg:"back_office",
+      text:"PKR 1 million injected. Breathing room. But now we owe the bank on top of everything else." },
+    { speaker:"owner", expression:"concerned", bg:"back_office",
+      text:"Interest starts immediately. We need to deploy this carefully — where does it go?" },
+  ],
+  pricing_decision: [
+    { speaker:"narrator", text:"You pull up the competitor price list. The gap is real but narrow." },
+    { speaker:"owner", expression:"thinking",
+      text:"If we raise prices and customers go across the road to D-Mart, we lose both margin and volume." },
+    { speaker:"owner", expression:"concerned",
+      text:"Which items do we touch? Everything, or only where they have no alternative?" },
+  ],
+  credit_decision: [
+    { speaker:"narrator", bg:"back_office", text:"You arrange a meeting with the main supplier. Chai is poured. The negotiation begins." },
+    { speaker:"owner", expression:"neutral", bg:"back_office",
+      text:"We've been loyal customers for eleven years. I'm asking for 60 days. Just 60 days to stabilise." },
+    { speaker:"narrator", bg:"back_office",
+      text:"The supplier agrees — reluctantly. PKR 300,000 in cash pressure relieved." },
+    { speaker:"owner", expression:"confident",
+      text:"Good. Now let's use this window properly. What's the next move?" },
+  ],
+  month2_optimized_ops: [
+    { speaker:"narrator", text:"Month 2. The early decisions are showing results. The numbers are moving in the right direction." },
+    { speaker:"owner", expression:"neutral",
+      text:"I've been watching daily. We're not there yet — but it feels different. More organised." },
+    { speaker:"owner", expression:"thinking",
+      text:"We need to accelerate. Month 3 target is PKR 2M. One month to close the gap." },
+  ],
+  month2_high_footfall: [
+    { speaker:"narrator", text:"Month 2. More people are coming through the door. Converting them is the next challenge." },
+    { speaker:"owner", expression:"neutral",
+      text:"Footfall is up. But the cashier says average basket size hasn't moved. People are browsing, not buying." },
+    { speaker:"owner", expression:"thinking",
+      text:"How do we turn visitors into actual sales?" },
+  ],
+  month2_low_service: [
+    { speaker:"narrator", text:"Month 2. The layoffs hit harder than expected. Two regulars complained about slow service this week." },
+    { speaker:"owner", expression:"angry",
+      text:"Yaar, this isn't working. A customer said she's going to Carrefour next time. Because our queue is too long." },
+    { speaker:"owner", expression:"concerned",
+      text:"We cut too deep. What do we do now to stop losing people?" },
+  ],
+  month2_stable_ops: [
+    { speaker:"narrator", text:"Month 2. Operations are stable. Not exceptional — but not deteriorating. A window of opportunity." },
+    { speaker:"owner", expression:"neutral",
+      text:"Things are steady. That's something. But steady won't hit the Month 3 target." },
+    { speaker:"owner", expression:"thinking",
+      text:"We need a new revenue stream. Something that uses what we already have." },
+  ],
+  checkpoint_evaluation: [
+    { speaker:"narrator",
+      text:"End of Month 3. The owner pulls out the ledger. Both of you already know what the numbers say." },
+    { speaker:"owner", expression:"thinking",
+      text:"Three months. Let's see where we actually stand against where we said we'd be." },
+  ],
+  scaling_phase: [
+    { speaker:"owner", expression:"confident",
+      text:"We hit it. PKR 2M. I honestly wasn't sure we would." },
+    { speaker:"owner", expression:"neutral",
+      text:"The business is viable. Now — how do we grow it? Month 6 target is PKR 4M. We're halfway." },
+    { speaker:"narrator", text:"Month 4. The business has stabilised. The strategic phase begins." },
+  ],
+  distress_phase: [
+    { speaker:"owner", expression:"desperate",
+      text:"We missed the target. I don't have to tell you — you can see it in the numbers." },
+    { speaker:"owner", expression:"angry",
+      text:"The bank has been calling. The supplier is chasing the overdue balance. I still have fifteen staff to pay Friday." },
+    { speaker:"narrator", text:"Month 4. The distress phase. Every decision from here is crisis management." },
+    { speaker:"owner", expression:"concerned",
+      text:"Tell me honestly — is there still a way out of this?" },
+  ],
+  month5_scaling: [
+    { speaker:"narrator", text:"Month 5. The growth strategy is working. One month left." },
+    { speaker:"owner", expression:"confident",
+      text:"You know, when you first walked in I thought — what can a student tell me about my own business? I was wrong." },
+    { speaker:"owner", expression:"neutral",
+      text:"Final month. Do we protect what we've built, or push harder for PKR 4M?" },
+  ],
+  month5_distress: [
+    { speaker:"narrator", text:"Month 5. The restructuring bought time. The business still needs to perform." },
+    { speaker:"owner", expression:"concerned",
+      text:"One more month. Whatever we do next — it has to work. There's nothing left to cut." },
+  ],
+  ending_success: [
+    { speaker:"narrator", bg:"store", text:"Month 6. The final count is in." },
+    { speaker:"owner", expression:"confident", bg:"store",
+      text:"We did it. PKR 4M. My accountant confirmed this morning. The investment is recoverable." },
+    { speaker:"owner", expression:"neutral", bg:"store",
+      text:"You taught me to read my own business. I was running on instinct for years. You brought the numbers into it." },
+    { speaker:"narrator", bg:"store",
+      text:"FreshMart recovered. The owner's PKR 30M investment is back on track." },
+  ],
+  ending_survival: [
+    { speaker:"narrator", text:"Month 6. Below target, but the store is still standing." },
+    { speaker:"owner", expression:"concerned",
+      text:"We didn't hit PKR 4M. But we're still here. The staff are paid. The suppliers are talking to us." },
+    { speaker:"owner", expression:"thinking",
+      text:"Some decisions — I think we needed more time. Or better timing." },
+    { speaker:"narrator",
+      text:"FreshMart survives. Not the outcome you planned for, but a business that learned from crisis." },
+  ],
+  ending_failure: [
+    { speaker:"narrator", bg:"store", text:"Month 6. The shutters stay down today." },
+    { speaker:"owner", expression:"desperate", bg:"store",
+      text:"I had to let the remaining staff go last week. It was the hardest day of my life." },
+    { speaker:"owner", expression:"concerned", bg:"store",
+      text:"PKR 30 million. Eleven years. Gone." },
+    { speaker:"narrator", bg:"store",
+      text:"FreshMart closes. Decisions made under pressure compounded into an outcome that couldn't be reversed." },
+    { speaker:"owner", expression:"thinking", bg:"store",
+      text:"Maybe with different choices... I don't know. You tried. Thank you for that." },
+  ],
+};
+
+// Immediate owner reaction after each decision
+const FM_REACTIONS = {
+  layoff_employees:     { expression:"concerned",  text:"Staff cuts. It'll help the salary line — but I worry about morale. These boys work hard." },
+  take_loan:            { expression:"concerned",  text:"PKR 1M from the bank. Breathing room. Now the pressure is to use it right." },
+  increase_prices:      { expression:"thinking",   text:"Some customers won't like it. But if it improves margin without killing footfall..." },
+  supplier_credit:      { expression:"confident",  text:"60 days. The breathing room we needed. Good — now we move." },
+  aggressive_layoff:    { expression:"angry",      text:"40%? That's a lot. I hope the remaining team can hold the service level." },
+  smart_layoff:         { expression:"neutral",    text:"Controlled. We keep service quality but reduce the burden. I can work with this." },
+  loan_inventory:       { expression:"confident",  text:"Clear the dead stock, free the cash. Classic. Why didn't I do this months ago?" },
+  loan_marketing:       { expression:"thinking",   text:"More footfall — but if margin stays thin, more customers means more loss." },
+  bundle_strategy:      { expression:"confident",  text:"Bundles. Higher perceived value, better margin. Customers feel they're getting something." },
+  selective_pricing:    { expression:"neutral",    text:"Surgical pricing. Touch only where we have leverage. Smart." },
+  inventory_clearance:  { expression:"confident",  text:"Clearance sale. The shelves look better already. Cash moving — that's what we needed." },
+  product_refresh:      { expression:"neutral",    text:"New categories. It's a bet — but customers respond to fresh inventory." },
+  staff_incentives:     { expression:"confident",  text:"Commission structure. Now the staff want to sell. Alignment at last." },
+  category_focus:       { expression:"confident",  text:"80/20. Focus on what actually sells. The rest was noise." },
+  upsell_training:      { expression:"neutral",    text:"Training on upselling. Small investment, direct impact on basket size." },
+  express_checkout:     { expression:"neutral",    text:"Faster checkout. Customers appreciate that more than discounts." },
+  rehire_key_staff:     { expression:"concerned",  text:"Rehiring costs us. But losing long-term customers costs more. Correct call." },
+  customer_recovery:    { expression:"thinking",   text:"Vouchers won't solve it permanently — but it buys goodwill while we fix the root." },
+  b2b_contracts:        { expression:"confident",  text:"B2B supply. Predictable volume, consistent cash flow. This could be a real pillar." },
+  whatsapp_orders:      { expression:"confident",  text:"WhatsApp ordering. Free channel, direct to customer. I like this." },
+  second_location:      { expression:"thinking",   text:"Two stores. Double the exposure — double the risk. I hope we're ready." },
+  online_channels:      { expression:"confident",  text:"E-commerce. We reach customers who never walk past the store. That's growth." },
+  private_label:        { expression:"confident",  text:"Our own brand. Higher margin, stronger identity. Right move." },
+  debt_restructuring:   { expression:"neutral",    text:"Extended terms. Monthly burden drops. Now we use the space to perform." },
+  asset_liquidation:    { expression:"desperate",  text:"Liquidating. It hurts to watch. But we preserve what's left of the core." },
+  consolidate_gains:    { expression:"confident",  text:"Discipline. Protecting a working business is strategy too." },
+  final_push:           { expression:"thinking",   text:"All in for Month 6. High risk — but if it works, we hit the target." },
+  cost_discipline:      { expression:"concerned",  text:"Cut everything non-essential. Painful but necessary. Survival mode." },
+  last_chance_marketing:{ expression:"desperate",  text:"Last gamble. PKR 250K on visibility. It has to convert or we're done." },
+};
+
+// ─── Pure helper functions ─────────────────────────────────────────
+
+function fmtMoneyFM(n) {
+  const v = Math.abs(Number(n) || 0);
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
+  if (v >= 1_000)     return `${(v / 1_000).toFixed(0)}K`;
+  return String(Math.round(v));
+}
+
+function calcRecovery(state) {
+  return Math.min(100, Math.round(((state.monthly_sales||0)/(state.month_target_6||4_000_000))*100));
+}
+
+function applyFMEffects(base, effects) {
+  const s = { ...base };
+  Object.entries(effects||{}).forEach(([k,v]) => {
+    if (typeof v==="string" && v.startsWith("+")) s[k]=Math.max(0,(s[k]||0)+parseFloat(v));
+    else if (typeof v==="string" && v.startsWith("-")) s[k]=Math.max(0,(s[k]||0)+parseFloat(v));
+    else s[k]=v;
+  });
+  if (effects.customer_footfall)
+    s.footfall_multiplier=Math.max(0.5,s.footfall_multiplier+(parseFloat(effects.customer_footfall)||0)/100);
+  if (effects.customer_satisfaction)
+    s.conversion_multiplier=Math.max(0.5,s.conversion_multiplier+(parseFloat(effects.customer_satisfaction)||0)*0.3);
+  if (effects.employee_morale)
+    s.momentum_multiplier=Math.max(0.5,s.momentum_multiplier+(parseFloat(effects.employee_morale)||0)*0.2);
+  if (!effects.monthly_sales)
+    s.monthly_sales=Math.max(1_000_000,s.growth_base*s.footfall_multiplier*s.conversion_multiplier*s.momentum_multiplier);
+  s.decisions_made=(s.decisions_made||0)+1;
+  return s;
+}
+
+function applyFMMonthlyOps(cur, month) {
+  const s={...cur};
+  const burn=s.monthly_burn||s.monthly_expenses||900_000;
+  s.previous_cash_on_hand=s.cash_on_hand||0;
+  s.monthly_expense_deduction=burn;
+  let cash=(s.cash_on_hand||0)-burn;
+  if (cash<0) {
+    const loan=Math.abs(cash);
+    s.accumulated_debt=((s.accumulated_debt||0)+loan)*1.15;
+    s.loan_taken_this_month=loan;
+    s.cash_on_hand=0;
+    s.escalation_stage=s.accumulated_debt>=5_000_000?3:s.accumulated_debt>=2_000_000?2:1;
+  } else {
+    s.cash_on_hand=cash;
+    s.loan_taken_this_month=0;
+  }
+  if (month>=4) {
+    if (s.customer_satisfaction>0.7) s.monthly_sales=Math.min(s.monthly_sales*1.1,5_000_000);
+    else if (s.customer_satisfaction<0.3) s.monthly_sales=Math.max(s.monthly_sales*0.9,500_000);
+  }
+  s.current_month=month;
+  return s;
+}
+
+function fmEvaluateCheckpoint(s) {
+  return (s.monthly_sales>=2_000_000 && s.monthly_sales>s.monthly_expenses)
+    ? FRESHMART_SCENARIOS.scaling_phase
+    : FRESHMART_SCENARIOS.distress_phase;
+}
+
+function fmEvaluateFinal(s) {
+  const sales=s.monthly_sales||0, debt=s.accumulated_debt||0;
+  if (sales>=4_000_000) return FRESHMART_SCENARIOS.ending_success;
+  if (sales>=3_000_000 && debt<3_000_000) return FRESHMART_SCENARIOS.ending_success;
+  if (sales>=2_700_000 && debt<5_000_000) return FRESHMART_SCENARIOS.ending_survival;
+  return FRESHMART_SCENARIOS.ending_failure;
+}
+
+function fmResolveNext(nextId, state, month) {
+  if (nextId==="benchmark1_evaluation") return fmEvaluateCheckpoint(state);
+  if (!nextId||nextId==="ending_evaluation") return fmEvaluateFinal(state);
+  if (month>=6) return fmEvaluateFinal(state);
+  return FRESHMART_SCENARIOS[nextId]||FRESHMART_SCENARIOS.ending_failure;
+}
+
+// ─── DialoguePlayer ────────────────────────────────────────────────
+function FMDialoguePlayer({ scenarioId, ownerName, onComplete }) {
+  const lines = FM_DIALOGUE[scenarioId]||[];
+  const [idx,setIdx]         = useState(0);
+  const [visible,setVisible] = useState(true);
+
+  useEffect(()=>{ setIdx(0); setVisible(true); },[scenarioId]);
+
+  const done = idx>=lines.length;
+  useEffect(()=>{ if(done) onComplete(); },[done]);
+  if (!lines.length) { onComplete(); return null; }
+  if (done) return null;
+
+  const line    = lines[idx];
+  const bg      = FM_BACKGROUNDS[line.bg]||FM_BACKGROUNDS.store;
+  const isOwner = line.speaker==="owner";
+  const isNarr  = line.speaker==="narrator";
+
+  function advance(){
+    setVisible(false);
+    setTimeout(()=>{ setIdx(i=>i+1); setVisible(true); },100);
+  }
+
+  return (
+    <div onClick={advance} style={{cursor:"pointer",marginBottom:20,userSelect:"none",animation:"fadeIn .3s both"}}>
+
+      {/* Scene */}
+      <div style={{position:"relative",height:300,overflow:"hidden",border:`1px solid ${T.border}`}}>
+        <img src={bg} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}
+          onError={e=>e.target.style.display="none"}/>
+
+        {/* Vignette */}
+        <div style={{position:"absolute",inset:0,
+          background:"linear-gradient(to top,rgba(0,0,0,.85) 0%,rgba(0,0,0,.18) 55%,rgba(0,0,0,.5) 100%)",
+          pointerEvents:"none"}}/>
+
+        {/* Sprite */}
+        {isOwner && line.expression && (
+          <img key={`${scenarioId}-${idx}`} src={FM_SPRITES[line.expression]} alt={line.expression}
+            style={{position:"absolute",bottom:0,left:"50%",transform:"translateX(-50%)",
+              height:"94%",objectFit:"contain",
+              animation:visible?"spriteIn .25s both":"none",
+              filter:"drop-shadow(0 4px 28px rgba(0,0,0,.75))"}}
+            onError={e=>e.target.style.display="none"}/>
+        )}
+
+        {/* Progress dots */}
+        <div style={{position:"absolute",bottom:10,left:"50%",transform:"translateX(-50%)",display:"flex",gap:5}}>
+          {lines.map((_,i)=>(
+            <div key={i} style={{width:5,height:5,borderRadius:"50%",
+              background:i===idx?T.gold:"rgba(255,255,255,.25)",transition:"background .2s"}}/>
+          ))}
+        </div>
+
+        {/* Hint */}
+        <div style={{position:"absolute",bottom:10,right:14,
+          fontFamily:T.mono,fontSize:7,color:"rgba(255,255,255,.4)",
+          letterSpacing:1.5,animation:"pulse 2s infinite"}}>▶ CLICK</div>
+      </div>
+
+      {/* Dialogue box */}
+      <div style={{background:"rgba(6,6,8,.97)",
+        border:`1px solid ${isNarr?T.muted+"44":T.gold+"44"}`,
+        borderTop:`2px solid ${isNarr?T.muted+"66":T.gold}`,
+        padding:"13px 18px",minHeight:72,
+        animation:visible?"dialogueIn .18s both":"none"}}>
+
+        {isOwner&&(
+          <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:2.5,marginBottom:7,
+            display:"flex",alignItems:"center",gap:8}}>
+            <span style={{width:5,height:5,borderRadius:"50%",background:T.gold,display:"inline-block"}}/>
+            {(ownerName||"IMRAN KHAN").toUpperCase()} · OWNER
+          </div>
+        )}
+        {isNarr&&(
+          <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:2.5,marginBottom:7}}>NARRATOR</div>
+        )}
+
+        <div style={{fontFamily:isNarr?T.mono:T.sans,fontSize:isNarr?11:13,
+          color:isNarr?T.dim:T.txt,lineHeight:1.75,fontStyle:isNarr?"italic":"normal"}}>
+          {line.text.replace(/Imran/g,ownerName||"Imran")}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ReactionBox ───────────────────────────────────────────────────
+function FMReactionBox({ optionId, ownerName }) {
+  const r = FM_REACTIONS[optionId];
+  if (!r) return null;
+  return (
+    <div style={{display:"flex",gap:12,alignItems:"flex-start",
+      background:T.surf,border:`1px solid ${T.gold}33`,
+      borderLeft:`3px solid ${T.gold}`,padding:"12px 14px",
+      marginBottom:16,animation:"fadeUp .3s both"}}>
+      <img src={FM_SPRITES[r.expression]} alt={r.expression}
+        style={{width:52,height:52,objectFit:"cover",objectPosition:"top center",
+          flexShrink:0,border:`1px solid ${T.border}`}}
+        onError={e=>e.target.style.display="none"}/>
+      <div>
+        <div style={{fontFamily:T.mono,fontSize:7,color:T.gold,letterSpacing:2,marginBottom:5}}>
+          {(ownerName||"IMRAN").toUpperCase().split(" ")[0]} REACTS
+        </div>
+        <div style={{fontFamily:T.sans,fontSize:12,color:T.dim,lineHeight:1.65}}>
+          "{r.text}"
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── XpPopup ───────────────────────────────────────────────────────
+function FMXpPopup({ xp, visible }) {
+  if (!visible||!xp) return null;
+  return (
+    <div style={{position:"fixed",top:76,right:22,zIndex:999,
+      fontFamily:T.serif,fontSize:22,color:T.gold,fontWeight:900,
+      animation:"xpPop 1.4s both",pointerEvents:"none",
+      textShadow:`0 0 22px ${T.gold}`}}>
+      +{xp} XP
+    </div>
+  );
+}
+
+// ─── OptionCard ────────────────────────────────────────────────────
+function FMOptionCard({ option, index, onSelect }) {
+  const [hov,setHov]=useState(false);
+  const xpVal   = option.xp||10;
+  const quality = xpVal>=30?"OPTIMAL":xpVal>=20?"MODERATE":"RISKY";
+  const qColor  = xpVal>=30?T.green:xpVal>=20?T.gold:T.red;
+  return (
+    <div onClick={()=>onSelect(option)}
+      onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
+      style={{background:hov?T.surf2:T.surf,
+        border:`1px solid ${hov?qColor+"66":T.border}`,
+        borderLeft:`3px solid ${qColor}`,
+        padding:"15px 18px",cursor:"pointer",
+        transition:"all .18s",position:"relative"}}>
+      <div style={{position:"absolute",top:10,right:12,
+        fontFamily:T.mono,fontSize:7,color:T.gold,
+        border:`1px solid ${T.goldM}`,padding:"2px 7px",letterSpacing:1}}>
+        +{xpVal} XP
+      </div>
+      <div style={{fontFamily:T.mono,fontSize:7,color:qColor,letterSpacing:2,marginBottom:5}}>
+        OPTION {index+1} · {quality}
+      </div>
+      <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,lineHeight:1.5,fontWeight:600,paddingRight:64}}>
+        {option.label}
+      </div>
+      {hov&&option.effect&&(
+        <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`,
+          display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,animation:"fadeIn .15s both"}}>
+          {Object.entries(option.effect).map(([k,v])=>{
+            const pos=typeof v==="string"&&v.startsWith("+");
+            const neg=typeof v==="string"&&v.startsWith("-");
+            if (!pos&&!neg) return null;
+            return (
+              <div key={k} style={{display:"flex",justifyContent:"space-between",gap:6}}>
+                <span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{k.replace(/_/g," ")}</span>
+                <span style={{fontFamily:T.mono,fontSize:7,color:pos?T.green:T.red,fontWeight:700}}>{String(v)}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MAIN COMPONENT ────────────────────────────────────────────────
+function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
+
+  // Stable session — never regenerates on re-render
+  const sessionRef=useRef(null);
+  if (!sessionRef.current) sessionRef.current=generateFreshMartSession(user?.xp||0);
+  const session   = sessionRef.current;
+  const ownerName = session.owner_name||"Imran Khan";
+
+  const [state,setState]                     = useState(()=>({...session.initialState}));
+  const [currentMonth,setCurrentMonth]       = useState(1);
+  const [phase,setPhase]                     = useState("dialogue");
+  const [selectedOption,setSelectedOption]   = useState(null);
+  const [decisionHistory,setDecisionHistory] = useState([]);
+  const [currentScenario,setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
+  const [permanentConsequences,setPermanentConsequences] = useState({});
+  const [isMobile,setIsMobile]               = useState(false);
+  const [timeRemaining,setTimeRemaining]     = useState(120);
+  const [timerActive,setTimerActive]         = useState(false);
+  const [xpPopup,setXpPopup]                 = useState({visible:false,xp:0});
+  const [shake,setShake]                     = useState(false);
   const topRef = useRef(null);
-  
-  // Calculate derived state
-  const recoveryScore = calculateRecoveryScore(state);
-  const isEnding = currentScenario?.isEnding || false;
-  const isCheckpoint = currentScenario?.checkpoint || false;
-  
-  // Timer effect
-  useEffect(() => {
-    let interval;
-    
-    if (timerActive && timeRemaining > 0) {
-      interval = setInterval(() => {
-        setTimeRemaining(prev => {
-          if (prev <= 1) {
-            setTimerActive(false);
-            // Auto-advance to next month when time runs out
-            handleTimeExpired();
-            return 120; // Reset for next month
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    
-    return () => clearInterval(interval);
-  }, [timerActive, timeRemaining]);
-  
-  // Start timer when entering decision phase
-  useEffect(() => {
-    if (phase === "decision" && !timerActive && !isEnding) {
-      setTimeRemaining(120);
-      setTimerActive(true);
-      setMonthStartTime(Date.now());
-    }
-  }, [phase, currentMonth]);
-  
-  // Handle time expiration
-  function handleTimeExpired() {
-    // Auto-select a random option or apply penalty
-    const options = currentScenario.options || [];
-    if (options.length > 0) {
-      const randomOption = options[Math.floor(Math.random() * options.length)];
-      handleOptionSelect(randomOption);
-    }
-  }
-  
-  // Process permanent consequences from decisions
-  function processConsequences(option) {
-    const effects = option.effect || {};
-    const newConsequences = { ...permanentConsequences };
-    
-    // Process negative effects as permanent consequences
-    Object.entries(effects).forEach(([key, value]) => {
-      if (typeof value === 'string' && value.startsWith('-')) {
-        let consequenceType = '';
-        let consequenceName = '';
-        
-        // Map effects to consequence types
-        if (key === 'cash_on_hand') {
-          consequenceType = 'CASH_CRISIS';
-          consequenceName = 'Cash Crisis';
-        } else if (key === 'customer_satisfaction') {
-          consequenceType = 'CUSTOMER_EXODUS';
-          consequenceName = 'Customer Exodus';
-        } else if (key === 'employee_morale') {
-          consequenceType = 'STAFF_MUTINY';
-          consequenceName = 'Staff Mutiny';
-        } else if (key === 'monthly_expenses') {
-          consequenceType = 'COST_SPIRAL';
-          consequenceName = 'Cost Spiral';
-        } else if (key === 'customer_footfall') {
-          consequenceType = 'GHOST_TOWN';
-          consequenceName = 'Ghost Town';
-        } else if (key === 'dead_stock_units') {
-          consequenceType = 'INVENTORY_SWAMP';
-          consequenceName = 'Inventory Swamp';
-        }
-        
-        if (consequenceType && !newConsequences[consequenceType]) {
-          newConsequences[consequenceType] = {
-            name: consequenceName,
-            penalty: 1.0, // Start with 100% penalty
-            month: currentMonth,
-            severity: 'ACTIVE',
-            description: getConsequenceDescription(consequenceType)
-          };
-        } else if (newConsequences[consequenceType]) {
-          // Escalate existing consequence by 20%
-          newConsequences[consequenceType].penalty *= 1.2;
-          newConsequences[consequenceType].severity = 'ESCALATED';
-        }
-      }
-    });
-    
-    setPermanentConsequences(newConsequences);
-  }
-  
-  // Get consequence descriptions
-  function getConsequenceDescription(type) {
-    const descriptions = {
-      'CASH_CRISIS': 'Deliveries slowing down, suppliers demanding upfront payment',
-      'CUSTOMER_EXODUS': 'Negative reviews spreading, footfall declining rapidly',
-      'STAFF_MUTINY': 'Employees calling in sick, productivity plummeting',
-      'COST_SPIRAL': 'Operating expenses ballooning, profit margins shrinking',
-      'GHOST_TOWN': 'Empty aisles, no customers, inventory rotting',
-      'INVENTORY_SWAMP': 'Warehouse overflowing, storage costs skyrocketing'
-    };
-    return descriptions[type] || 'Business operations severely impacted';
-  }
-  
-  // Business performance calculations
-  const monthlyProfit = state.monthly_sales - state.monthly_expenses;
-  const cashFlowPositive = monthlyProfit > 0;
-  const salesTargetProgress = state.monthly_sales / state.month_target_3; // Month 3 target initially
-  
-  // Apply option effects to state with compound growth system
-  function applyOptionEffects(baseState, effects) {
-    const newState = { ...baseState };
 
-    // Track decision impact for growth calculation
-    let decisionImpact = 0;
+  const recoveryScore   = calcRecovery(state);
+  const isEnding        = !!currentScenario?.isEnding;
+  const isCheckpoint    = !!currentScenario?.checkpoint;
+  const salesTargetProg = (state.monthly_sales||0)/(state.month_target_3||2_000_000);
+  const endColor        = currentScenario?.type==="success"?T.green:currentScenario?.type==="failure"?T.red:T.gold;
 
-    Object.entries(effects).forEach(([key, change]) => {
-      if (typeof change === 'string' && change.startsWith('+')) {
-        const value = parseFloat(change);
-        newState[key] = Math.max(0, (newState[key] || 0) + value);
-        
-        // Track growth impact for sales-related decisions
-        if (key === 'monthly_sales') {
-          decisionImpact += value;
-        }
-      } else if (typeof change === 'string' && change.startsWith('-')) {
-        const value = parseFloat(change);
-        newState[key] = Math.max(0, (newState[key] || 0) + value);
-      } else if (typeof change === 'boolean') {
-        newState[key] = change;
-      } else {
-        newState[key] = change;
-      }
-    });
+  useEffect(()=>{
+    const fn=()=>setIsMobile(window.innerWidth<=768);
+    fn(); window.addEventListener("resize",fn);
+    return ()=>window.removeEventListener("resize",fn);
+  },[]);
 
-    // Update compound growth multipliers based on decisions
-    if (effects.customer_footfall) {
-      const footfallChange = parseFloat(effects.customer_footfall) || 0;
-      newState.footfall_multiplier = Math.max(0.5, newState.footfall_multiplier + (footfallChange / 100));
-    }
-    
-    if (effects.customer_satisfaction) {
-      const satisfactionChange = parseFloat(effects.customer_satisfaction) || 0;
-      newState.conversion_multiplier = Math.max(0.5, newState.conversion_multiplier + (satisfactionChange * 0.3));
-    }
-    
-    if (effects.employee_morale) {
-      const moraleChange = parseFloat(effects.employee_morale) || 0;
-      newState.momentum_multiplier = Math.max(0.5, newState.momentum_multiplier + (moraleChange * 0.2));
-    }
+  useEffect(()=>{
+    if (!timerActive||timeRemaining<=0) return;
+    const id=setInterval(()=>{
+      setTimeRemaining(t=>{
+        if (t<=1){ setTimerActive(false); handleTimeExpired(); return 120; }
+        return t-1;
+      });
+    },1000);
+    return ()=>clearInterval(id);
+  },[timerActive,timeRemaining]);
 
-    // Calculate compound growth: base × footfall × conversion × momentum
-    const compoundSales = newState.growth_base * 
-                        newState.footfall_multiplier * 
-                        newState.conversion_multiplier * 
-                        newState.momentum_multiplier;
-    
-    // Update monthly_sales with compound growth if not directly modified
-    if (!effects.monthly_sales) {
-      newState.monthly_sales = Math.max(1000000, compoundSales);
-    }
+  useEffect(()=>{
+    if (phase==="decision"&&!isEnding&&!isCheckpoint){ setTimeRemaining(120); setTimerActive(true); }
+    else setTimerActive(false);
+  },[phase,currentMonth]);
 
-    // Track decision impact by month
-    const currentMonth = newState.current_month || 1;
-    if (currentMonth === 1) {
-      newState.month1_decision_impact = decisionImpact;
-    } else if (currentMonth === 2) {
-      newState.month2_decision_impact = decisionImpact;
-    } else if (currentMonth === 3) {
-      newState.month3_decision_impact = decisionImpact;
-    }
+  useEffect(()=>{
+    if (user?.id) startSession(supabase,user.id,session).catch(e=>console.warn("session start:",e));
+  },[]);
 
-    // Update derived values
-    newState.decisions_made = (newState.decisions_made || 0) + 1;
+  function handleDialogueComplete(){ setPhase(isEnding?"ending":"decision"); }
 
-    return newState;
+  function handleTimeExpired(){
+    const opts=currentScenario.options||[];
+    if (opts.length) handleOptionSelect(opts[Math.floor(Math.random()*opts.length)]);
   }
-  
-  // Resolve next scenario based on option and handle checkpoint logic
-  function resolveNextScenario(nextId, currentState) {
-    // Handle benchmark evaluation at Month 4
-    if (nextId === "benchmark1_evaluation") {
-      return evaluateCheckpoint(currentState);
-    }
-    
-    // Handle ending evaluation trigger
-    if (nextId === null || nextId === "ending_evaluation") {
-      return evaluateFinalOutcome(currentState);
-    }
-    
-    // Handle final ending conditions
-    if (currentMonth >= 6) {
-      return evaluateFinalOutcome(currentState);
-    }
-    
-    // Return the specified next scenario
-    return FRESHMART_SCENARIOS[nextId] || FRESHMART_SCENARIOS.ending_failure;
-  }
-  
-  // Evaluate Month 3 checkpoint and determine phase (made realistically unreachable)
-  function evaluateCheckpoint(currentState) {
-    const salesTarget = currentState.month_target_3; // 2M sales target
-    const salesAchieved = currentState.monthly_sales;
-    const cashFlowPositive = currentState.monthly_sales > currentState.monthly_expenses;
-    
-    // Check if 2M sales target is met with reasonable criteria
-    const scalingCriteria = salesAchieved >= 2000000 && cashFlowPositive;
-    
-    if (scalingCriteria) {
-      // Advance to scaling phase (achieved 2M+ target)
-      return FRESHMART_SCENARIOS.scaling_phase;
-    } else {
-      // Enter distress phase (missed 2M+ target)
-      return FRESHMART_SCENARIOS.distress_phase;
-    }
-  }
-  
-  // Evaluate final outcome at Month 6
-  function evaluateFinalOutcome(currentState) {
-    const salesAchieved = currentState.monthly_sales;
-    const cashFlowPositive = currentState.monthly_sales > currentState.monthly_expenses;
-    
-    // Perfect ending: 4M+ sales regardless of debt (debt is a consequence of growth strategy)
-    if (salesAchieved >= 4000000) {
-      return FRESHMART_SCENARIOS.ending_success;
-    } 
-    // Successful ending: 3M+ sales with manageable debt
-    else if (salesAchieved >= 3000000 && currentState.accumulated_debt < 3000000) {
-      return FRESHMART_SCENARIOS.ending_success;
-    } 
-    // Survival ending: 2.7M+ sales with moderate debt
-    else if (salesAchieved >= 2700000 && currentState.accumulated_debt < 5000000) {
-      return FRESHMART_SCENARIOS.ending_survival;
-    } 
-    // Failure: Below survival thresholds or excessive debt
-    else {
-      return FRESHMART_SCENARIOS.ending_failure;
-    }
-  }
-  
-  // Handle option selection
-  function handleOptionSelect(option) {
+
+  function handleOptionSelect(option){
+    setTimerActive(false);
     setSelectedOption(option);
-    setPhase("result");
-    
-    const newState = applyOptionEffects(state, option.effect);
-    
-    const decision = {
-      month: currentMonth,
-      scenarioId: currentScenario.id,
-      optionId: option.id,
-      optionLabel: option.label,
-      effects: option.effect
-    };
-    
-    setDecisionHistory([...decisionHistory, decision]);
+    const newState=applyFMEffects(state,option.effect||{});
+    const decision={month:currentMonth,scenarioId:currentScenario.id,
+      optionId:option.id,optionLabel:option.label,xpEarned:option.xp||10};
+    const newHistory=[...decisionHistory,decision];
+    setDecisionHistory(newHistory);
     setState(newState);
+    setPhase("result");
+    setXpPopup({visible:true,xp:option.xp||10});
+    setTimeout(()=>setXpPopup({visible:false,xp:0}),1500);
+    const bigNeg=Object.values(option.effect||{}).some(v=>typeof v==="string"&&v.startsWith("-")&&Math.abs(parseFloat(v))>200_000);
+    if (bigNeg){ setShake(true); setTimeout(()=>setShake(false),500); }
+    onDecisionXP&&onDecisionXP(option.xp||10,currentMonth);
+    awardDecisionXP(option.xp||10,currentMonth);
+    saveDecision(supabase,session.session_id,newState,newHistory).catch(()=>{});
+    topRef.current?.scrollIntoView({behavior:"smooth"});
   }
-  
-  // Handle continue to next scenario with month progression
-  function handleContinue() {
-    if (isEnding) {
-      // Complete simulation and switch to results screen
-      onComplete && onComplete({
-        log: decisionHistory.map(d => ({ action: d.optionLabel, month: d.month })),
-        state: state,
-        endingType: currentScenario.type,
-        month: currentMonth,
-        caseCompany: "FreshMart",
-        caseDiff: "SEED",
-        caseType: "simulation",
-        caseId: "freshmart-sim",
-        keyInsights: [generateStorytellingContent(state, decisionHistory)]
+
+  function handleContinue(){
+    if (isEnding){
+      completeSession(supabase,session.session_id,currentScenario.type||"failure",
+        state,recoveryScore,session.xpMultiplier||1,
+        decisionHistory.map(d=>d.optionId),user?.id).catch(()=>{});
+      onComplete?.({
+        log:decisionHistory.map(d=>({action:d.optionLabel,month:d.month})),
+        state,endingType:currentScenario.type,month:currentMonth,
+        caseCompany:"FreshMart",caseDiff:"SEED",caseType:"simulation",caseId:"freshmart-sim",
+        keyInsights:[{
+          crisisHook:"FreshMart was burning PKR 900K/month with 10% margin.",
+          pathText:decisionHistory.slice(0,3).map(d=>d.optionLabel).join(" → "),
+          score:Math.round(recoveryScore),
+          ending:currentScenario.type==="success"?"Business Saved":currentScenario.type==="failure"?"Business Failed":"Business Survived",
+          finalSales:state.monthly_sales||0,
+        }],
       });
       return;
     }
-    
-    // Handle final outcome evaluation at Month 6
-    if (currentMonth >= 6 && !isEnding) {
-      const finalOutcome = evaluateFinalOutcome(state);
-      setCurrentScenario(finalOutcome);
-      return;
-    }
-    
-    // Handle checkpoints - auto-advance without requiring selected option
-    let nextScenario;
-    if (isCheckpoint) {
-      nextScenario = resolveNextScenario(currentScenario.id, state);
-    } else {
-      nextScenario = resolveNextScenario(selectedOption.next, state);
-    }
-    
-    setCurrentScenario(nextScenario);
-    
-    // Advance month (but don't jump from checkpoint to conclusion)
-    let newMonth = currentMonth + 1;
-    
-    // Special handling for benchmark evaluation - place at start of Month 4
-    if (isCheckpoint) {
-      // Benchmark evaluation should be at start of Month 4
-      newMonth = 4; // Set to Month 4 for benchmark evaluation
-    }
-    
-    // Ensure we don't exceed Month 6
-    newMonth = Math.min(newMonth, 6);
-    
-    setCurrentMonth(newMonth);
-    
-    // Apply monthly business operations
-    const updatedState = applyMonthlyOperations(state, newMonth);
-    
-    // Ensure state.current_month matches React currentMonth
-    updatedState.current_month = newMonth;
-    
-    // Initialize debt tracking if cash runs out
-    if (state.cash_on_hand <= 0 && !updatedState.debt_start_time) {
-      updatedState.debt_start_time = Date.now();
-      updatedState.debt_start_amount = Math.abs(state.cash_on_hand);
-    }
-    
-    // Track escalation stages based on accumulated debt
-    const currentDebt = updatedState.accumulated_debt || 0;
-    if (currentDebt > 0 && !updatedState.escalation_stage) {
-      updatedState.escalation_stage = 1;
-    } else if (currentDebt >= 2000000 && updatedState.escalation_stage < 2) {
-      updatedState.escalation_stage = 2;
-    } else if (currentDebt >= 5000000 && updatedState.escalation_stage < 3) {
-      updatedState.escalation_stage = 3;
-    }
-    
-    setState(updatedState);
-    setPhase("decision");
-    setSelectedOption(null);
-  }
-  
-  // Apply monthly business operations and updates
-  function applyMonthlyOperations(currentState, month) {
-    const newState = { ...currentState };
-    
-    // Apply monthly burn (expenses)
-    const previousCash = currentState.cash_on_hand;
-    const monthlyExpenses = currentState.monthly_burn;
-    
-    // Calculate if we need to use line of credit
-    let cashAfterExpenses = currentState.cash_on_hand - monthlyExpenses;
-    let loanTakenThisMonth = 0;
-    
-    if (cashAfterExpenses < 0) {
-      // Use line of credit to cover the shortfall
-      loanTakenThisMonth = Math.abs(cashAfterExpenses);
-      cashAfterExpenses = 0;
-      
-      // Add to accumulated debt
-      newState.accumulated_debt = (currentState.accumulated_debt || 0) + loanTakenThisMonth;
-      
-      // Track loan taken for announcement
-      newState.loan_taken_this_month = loanTakenThisMonth;
-      
-      // Apply interest to accumulated debt (15% monthly)
-      newState.accumulated_debt = newState.accumulated_debt * 1.15;
-      
-      // Set cash to 0 (using line of credit)
-      newState.cash_on_hand = 0;
-    } else {
-      newState.cash_on_hand = cashAfterExpenses;
-      newState.loan_taken_this_month = 0;
-    }
-    
-    // Track monthly expense deduction for display
-    newState.monthly_expense_deduction = monthlyExpenses;
-    newState.previous_cash_on_hand = previousCash;
-    
-    // Update month-specific targets
-    if (month >= 4) {
-      newState.month_target_6 = 4000000; // Update to Month 6 target
-    }
-    
-    // Apply some business dynamics based on current state (only after Month 4)
-    if (month >= 4) {
-      if (currentState.customer_satisfaction > 0.7) {
-        newState.monthly_sales = Math.min(currentState.monthly_sales * 1.1, 5000000);
-      } else if (currentState.customer_satisfaction < 0.3) {
-        newState.monthly_sales = Math.max(currentState.monthly_sales * 0.9, 500000);
-      }
-    }
-    
-    // Update derived values
-    newState.current_month = month;
-    newState.decisions_made = (newState.decisions_made || 0) + 1;
-    
-    return newState;
-  }
-  
-  // Generate storytelling content for LinkedIn card
-  function generateStorytellingContent(currentState, decisions) {
-    const finalSales = currentState.monthly_sales;
-    const initialBurn = 900000; // PKR 900K/month initial burn
-    const finalBurn = currentState.monthly_expenses;
-    const marginChange = ((finalSales / finalBurn) - 1) * 100;
-    const months = currentState.current_month || 6;
-    
-    // Crisis Hook - what was broken
-    const crisisHook = `FreshMart was burning ₨${fmtMoney(initialBurn)}/month. `;
-    
-    // Path - key decisions made
-    const pathDecisions = decisions.slice(0, 3).map(d => d.optionLabel).join(", ");
-    const pathText = pathDecisions ? `I ${pathDecisions.toLowerCase()}, and turned crisis into opportunity.` : 'I navigated the crisis through strategic decisions.';
-    
-    // Outcome - results and ending
-    const score = Math.round((finalSales / 4000000) * 100); // Percentage of 4M target
-    const rank = score >= 100 ? "GROWTH" : score >= 75 ? "SCALING" : score >= 50 ? "SURVIVAL" : "DISTRESS";
-    const ending = finalSales >= 4000000 ? "Business Saved" : finalSales >= 2700000 ? "Business Survived" : "Business Failed";
-    
-    return {
-      crisisHook,
-      pathText,
-      score,
-      rank,
-      ending,
-      marginChange: Math.round(marginChange),
-      months
-    };
-  }
-  
-  // Assess decision risk level
-  function assessDecisionRisk(option, currentState) {
-    const effects = option.effect || {};
-    let riskScore = 0;
-    let riskFactors = [];
-    
-    // High cash burn risk
-    if (effects.cash_on_hand && effects.cash_on_hand.includes('-')) {
-      const cashBurn = Math.abs(parseFloat(effects.cash_on_hand));
-      if (cashBurn > 500000) {
-        riskScore += 3;
-        riskFactors.push("MASSIVE CASH BURN");
-      } else if (cashBurn > 300000) {
-        riskScore += 2;
-        riskFactors.push("HIGH CASH BURN");
-      }
-    }
-    
-    // Debt increase risk
-    if (effects.debt_stress && parseFloat(effects.debt_stress) > 0.1) {
-      riskScore += 2;
-      riskFactors.push("DEBT INCREASE");
-    }
-    
-    // Customer satisfaction risk
-    if (effects.customer_satisfaction && effects.customer_satisfaction.includes('-')) {
-      riskScore += 1;
-      riskFactors.push("CUSTOMER DISSATISFACTION");
-    }
-    
-    // Employee morale risk
-    if (effects.employee_morale && effects.employee_morale.includes('-')) {
-      riskScore += 1;
-      riskFactors.push("STAFF MORALE DECLINE");
-    }
-    
-    // Expense increase risk
-    if (effects.monthly_expenses && effects.monthly_expenses.includes('+')) {
-      riskScore += 2;
-      riskFactors.push("EXPENSE INCREASE");
-    }
-    
-    // Determine risk level
-    if (riskScore >= 5) {
-      return { level: "CRITICAL", factors: riskFactors, color: "#ff0000" };
-    } else if (riskScore >= 3) {
-      return { level: "HIGH", factors: riskFactors, color: "#ff6600" };
-    } else if (riskScore >= 1) {
-      return { level: "MODERATE", factors: riskFactors, color: "#ffaa00" };
-    } else {
-      return { level: "LOW", factors: ["CALCULATED RISK"], color: "#00aa00" };
-    }
-  }
-  
-  // Reset simulation
-  function resetSimulation() {
-    setState({...FM_INITIAL_STATE});
-    setCurrentScenario(FRESHMART_SCENARIOS.start);
-    setCurrentMonth(1);
-    setDecisionHistory([]);
-    setPhase("decision");
-    setSelectedOption(null);
-  }
-  
-  // Format time display
-  function formatTime(seconds) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  }
-  
-  const endColor = currentScenario?.type === "success" ? T.green : currentScenario?.type === "failure" ? T.red : T.gold;
-  const endLabel = currentScenario?.type === "success" ? "OPTIMAL RECOVERY" : currentScenario?.type === "failure" ? "BUSINESS FAILURE" : "STRUGGLING BUT SURVIVING";
-  
-  // Timer color based on remaining time
-  const timerColor = timeRemaining <= 30 ? "#ff0000" : timeRemaining <= 60 ? "#ff6600" : "#ffd700";
-  const timerAnimation = timeRemaining <= 30 ? "flash 1s infinite" : timeRemaining <= 60 ? "pulse 2s infinite" : "none";
 
+    let nextScenario;
+    if (isCheckpoint) nextScenario=fmEvaluateCheckpoint(state);
+    else if (currentMonth>=6) nextScenario=fmEvaluateFinal(state);
+    else nextScenario=fmResolveNext(selectedOption?.next,state,currentMonth);
+
+    const newMonth=isCheckpoint?4:Math.min(currentMonth+1,6);
+    const updatedState=applyFMMonthlyOps(state,newMonth);
+    updatedState.current_month=newMonth;
+
+    setCurrentScenario(nextScenario);
+    setCurrentMonth(newMonth);
+    setState(updatedState);
+    setSelectedOption(null);
+    setPhase("dialogue");
+    topRef.current?.scrollIntoView({behavior:"smooth"});
+  }
+
+  function resetSimulation(){
+    sessionRef.current=null;
+    sessionRef.current=generateFreshMartSession(user?.xp||0);
+    const s=sessionRef.current;
+    setState({...s.initialState});
+    setCurrentMonth(1);
+    setPhase("dialogue");
+    setCurrentScenario(FRESHMART_SCENARIOS.start);
+    setSelectedOption(null);
+    setDecisionHistory([]);
+    setPermanentConsequences({});
+  }
+
+  function formatTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
+
+  const timerColor=timeRemaining<=30?T.red:timeRemaining<=60?"#F97316":T.gold;
+
+  // Sidebar announcements
+  const ann=[];
+  if ((state.cash_on_hand||0)<=0)
+    ann.push({icon:"🚨",color:T.red,pulse:true,title:"CASH CRISIS",body:"Reserves depleted. Line of credit activated — 15% monthly interest."});
+  if ((state.accumulated_debt||0)>0)
+    ann.push({icon:"💣",color:"#F97316",pulse:(state.escalation_stage||0)>=2,title:`DEBT: PKR ${fmtMoneyFM(state.accumulated_debt)}`,body:`+PKR ${fmtMoneyFM((state.accumulated_debt||0)*0.15)}/month interest.`});
+  if ((state.loan_taken_this_month||0)>0)
+    ann.push({icon:"💳",color:"#F97316",pulse:false,title:"CREDIT LINE USED",body:`PKR ${fmtMoneyFM(state.loan_taken_this_month)} borrowed this month.`});
+  if ((state.dead_stock_units||0)>150)
+    ann.push({icon:"📦",color:T.red,pulse:false,title:"INVENTORY ALERT",body:`${state.dead_stock_units} dead SKUs. Cash locked in shelves.`});
+  if ((state.customer_satisfaction||1)<0.4&&currentMonth>=2)
+    ann.push({icon:"📢",color:T.blue,pulse:false,title:"CUSTOMER FEEDBACK",body:"Satisfaction critical. Negative reviews spreading."});
+  if ((state.employee_morale||1)<0.3&&currentMonth>=3)
+    ann.push({icon:"👥",color:"#F97316",pulse:false,title:"STAFF MORALE",body:"Team disengaged. Walkout risk rising."});
+  if ((state.debt_stress||0)>0.6&&currentMonth>=2)
+    ann.push({icon:"⚠️",color:T.red,pulse:false,title:"SUPPLIER PRESSURE",body:"Suppliers demanding faster payment."});
+  if ((state.monthly_sales||0)>=(state.month_target_3||2_000_000)&&currentMonth<=3)
+    ann.push({icon:"🎉",color:T.green,pulse:false,title:"TARGET MET",body:`Month 3 target of PKR ${fmtMoneyFM(state.month_target_3)} achieved!`});
+
+  // ── Render ─────────────────────────────────────────────────────
   return (
-    <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
-      <TopBar label="FRESHMART " sub="BRANCHING SIMULATION" onBack={onBack} right={
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <Tag color={DC.SEED}>SEED</Tag>
-          <button onClick={resetSimulation} style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2,transition:"all .15s"}} onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}} onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>↺ RESTART</button>
-        </div>
-      }/>
-      <div style={{height:3,background:T.muted,flexShrink:0}}><div style={{height:"100%",width:`${Math.min(100,recoveryScore)}%`,background:T.gold,transition:"width .6s ease"}}/></div>
-      
-      {/* Stock Market Style Stats Topbar */}
-      <div style={{background:"#1e3a5f",borderBottom:`1px solid ${T.border}`,padding:"12px 20px",overflowX:"auto"}}>
-        <div style={{display:"flex",gap:20,alignItems:"center",minWidth:"max-content"}}>
+    <div ref={topRef} style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column",
+      animation:shake?"screenShake .4s both":"none"}}>
+
+      <FMXpPopup xp={xpPopup.xp} visible={xpPopup.visible}/>
+
+      <TopBar label={`${(ownerName||"Imran Khan").toUpperCase().split(" ")[0]}'S GENERAL STORE`}
+        sub="BRANCHING SIMULATION" onBack={onBack}
+        right={
+          <div style={{display:"flex",gap:10,alignItems:"center"}}>
+            <span style={{fontFamily:T.mono,fontSize:7,color:DC.SEED,border:`1px solid ${DC.SEED}44`,padding:"2px 8px",letterSpacing:1.5}}>SEED</span>
+            <button onClick={resetSimulation}
+              style={{background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2}}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor=T.red;e.currentTarget.style.color=T.red;}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.color=T.dim;}}>
+              ↺ RESTART
+            </button>
+          </div>
+        }/>
+
+      <div style={{height:3,background:T.muted,flexShrink:0}}>
+        <div style={{height:"100%",width:`${Math.min(100,recoveryScore)}%`,background:T.gold,transition:"width .6s ease"}}/>
+      </div>
+
+      {/* Stats ticker */}
+      <div style={{background:"#0d1a2e",borderBottom:`1px solid ${T.border}`,padding:"10px 20px",overflowX:"auto",flexShrink:0}}>
+        <div style={{display:"flex",gap:22,alignItems:"center",minWidth:"max-content"}}>
           {[
-            {key: "monthly_sales", label: "Sales", icon: "💰", fmt: "money"},
-            {key: "monthly_expenses", label: "Expenses", icon: "📊", fmt: "money"},
-            {key: "cash_on_hand", label: "Cash", icon: "💵", fmt: "money"},
-            {key: "customer_satisfaction", label: "Satisfaction", icon: "😊", fmt: "percent"},
-            {key: "employee_morale", label: "Morale", icon: "👥", fmt: "percent"},
-            {key: "debt_stress", label: "Debt Stress", icon: "⚠️", fmt: "percent"}
-          ].map(stat => {
-            const value = state[stat.key];
-            const meta = FM_STATE_META[stat.key];
-            const displayValue = stat.fmt === "money" ? `PKR ${fmtMoney(value)}` : 
-                               stat.fmt === "percent" ? `${Math.round(value * 100)}%` : value;
-            
-            // Calculate real change indicator
-            const previousValue = state.previous_values?.[stat.key];
-            let change = 0;
-            let changePercent = "0.0%";
-            let changeColor = T.dim;
-            let changeIcon = "→";
-            
-            if (previousValue !== undefined && previousValue !== value) {
-              if (stat.fmt === "money") {
-                const diff = value - previousValue;
-                change = diff > 0 ? 1 : diff < 0 ? -1 : 0;
-                changePercent = change !== 0 ? `${Math.abs((diff / previousValue) * 100).toFixed(1)}%` : "0.0%";
-              } else if (stat.fmt === "percent") {
-                const diff = value - previousValue;
-                change = diff > 0 ? 1 : diff < 0 ? -1 : 0;
-                changePercent = change !== 0 ? `${Math.abs(diff * 100).toFixed(1)}%` : "0.0%";
-              }
-              changeColor = change > 0 ? T.green : change < 0 ? T.red : T.dim;
-              changeIcon = change > 0 ? "▲" : change < 0 ? "▼" : "→";
-            }
-            
+            {key:"monthly_sales",         label:"Sales",       icon:"💰",fmt:"money"},
+            {key:"monthly_expenses",       label:"Expenses",    icon:"📊",fmt:"money"},
+            {key:"cash_on_hand",           label:"Cash",        icon:"💵",fmt:"money"},
+            {key:"customer_satisfaction",  label:"CSAT",        icon:"😊",fmt:"pct"},
+            {key:"employee_morale",        label:"Morale",      icon:"👥",fmt:"pct"},
+            {key:"debt_stress",            label:"Debt Stress", icon:"⚠️",fmt:"pct"},
+          ].map(st=>{
+            const val=state[st.key]||0;
+            const disp=st.fmt==="money"?`PKR ${fmtMoneyFM(val)}`:`${Math.round(val*100)}%`;
+            const prev=state.previous_values?.[st.key];
+            const diff=prev!==undefined?(val>prev?1:val<prev?-1:0):0;
             return (
-              <div key={stat.key} style={{display:"flex",flexDirection:"column",gap:2}}>
-                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:12}}>{stat.icon}</span>
-                  <span style={{fontFamily:T.mono,fontSize:9,color:"#a8c7ff",letterSpacing:1}}>{stat.label}</span>
-                </div>
-                <div style={{display:"flex",alignItems:"baseline",gap:6}}>
-                  <span style={{fontFamily:T.mono,fontSize:12,color:"#ffffff",fontWeight:600}}>{displayValue}</span>
-                  <span style={{fontFamily:T.mono,fontSize:8,color:changeColor,display:"flex",alignItems:"center",gap:1}}>
-                    {changeIcon}{changePercent}
-                  </span>
+              <div key={st.key} style={{display:"flex",flexDirection:"column",gap:2}}>
+                <span style={{fontFamily:T.mono,fontSize:8,color:"#7aa6d4",letterSpacing:1}}>{st.icon} {st.label}</span>
+                <div style={{display:"flex",alignItems:"baseline",gap:5}}>
+                  <span style={{fontFamily:T.mono,fontSize:12,color:"#fff",fontWeight:600}}>{disp}</span>
+                  {diff!==0&&<span style={{fontFamily:T.mono,fontSize:8,color:diff>0?T.green:T.red}}>{diff>0?"▲":"▼"}</span>}
                 </div>
               </div>
             );
           })}
         </div>
       </div>
-      
-      <div ref={topRef} style={{flex:1,display:isMobile?"block":"flex",padding:isMobile?"16px 12px":"20px 16px",gap:20,overflowY:"auto"}}>
+
+      {/* Body */}
+      <div style={{flex:1,display:isMobile?"block":"flex",padding:isMobile?"16px 12px":"20px 16px",gap:20,overflowY:"auto"}}>
+
+        {/* Main */}
         <div style={{flex:1,minWidth:0}}>
-          {phase === "decision" && !isEnding && (
-            <div>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                <div style={{fontFamily:T.mono,fontSize:8,color:"#a8c7ff",letterSpacing:3}}>
-                  {isCheckpoint ? `MONTH ${currentMonth} · BENCHMARK 1 EVALUATION` : `MONTH ${currentMonth} · SCENARIO`}
+
+          {phase==="dialogue"&&(
+            <FMDialoguePlayer scenarioId={currentScenario.id} ownerName={ownerName} onComplete={handleDialogueComplete}/>
+          )}
+
+          {phase==="decision"&&!isEnding&&(
+            <div style={{animation:"fadeUp .3s both"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+                <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:3}}>
+                  {isCheckpoint?`MONTH ${currentMonth} · CHECKPOINT`:`MONTH ${currentMonth} · DECISION`}
                 </div>
-                {timerActive && (
-                  <div style={{display:"flex",alignItems:"center",gap:8,background:"#1a0000",border:"2px solid #ff0000",padding:"6px 12px",borderRadius:"6px"}}>
-                    <span style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1}}>⏰ TIME LIMIT</span>
-                    <span style={{fontFamily:T.mono,fontSize:10,color:timerColor,fontWeight:700,animation:timerAnimation}}>
-                      {formatTime(timeRemaining)}
-                    </span>
+                {timerActive&&(
+                  <div style={{display:"flex",alignItems:"center",gap:8,background:T.surf,border:`1px solid ${timerColor}`,padding:"5px 12px"}}>
+                    <span style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1}}>⏰</span>
+                    <span style={{fontFamily:T.mono,fontSize:10,color:timerColor,fontWeight:700}}>{formatTime(timeRemaining)}</span>
                   </div>
                 )}
               </div>
-              <div style={{fontFamily:T.sans,fontSize:15,color:"#e8f4ff",lineHeight:1.6,marginBottom:24}}>{currentScenario.description}</div>
-              
-              {isCheckpoint ? (
+
+              {isCheckpoint?(
                 <>
-                  <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
-                    <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>PERFORMANCE EVALUATION</div>
-                    <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
-                      Current Sales: PKR {fmtMoney(state.monthly_sales)} | Target: PKR {fmtMoney(state.month_target_3)}
-                      {salesTargetProgress >= 1 ? " ✓ TARGET MET" : " ✗ TARGET MISSED"}
+                  <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:16}}>
+                    <div style={{fontFamily:T.mono,fontSize:9,color:T.gold,marginBottom:8}}>CHECKPOINT EVALUATION</div>
+                    <div style={{fontFamily:T.sans,fontSize:12,color:T.dim,lineHeight:1.6}}>
+                      Sales: PKR {fmtMoneyFM(state.monthly_sales)} | Target: PKR {fmtMoneyFM(state.month_target_3||2_000_000)}
+                      <span style={{color:salesTargetProg>=1?T.green:T.red,marginLeft:8}}>
+                        {salesTargetProg>=1?"✓ TARGET MET":"✗ TARGET MISSED"}
+                      </span>
                     </div>
                   </div>
-                  <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO MONTH 4 PHASE →</button>
+                  <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2}}>
+                    CONTINUE TO MONTH 4 →
+                  </button>
                 </>
-              ) : (
-                <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>
-                  {currentScenario.options.length} OPTIONS AVAILABLE
-                </div>
+              ):(
+                <>
+                  <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:2,marginBottom:12}}>
+                    {(currentScenario.options||[]).length} OPTIONS — HOVER TO PREVIEW
+                  </div>
+                  <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                    {(currentScenario.options||[]).map((opt,i)=>(
+                      <FMOptionCard key={opt.id} option={opt} index={i} onSelect={handleOptionSelect}/>
+                    ))}
+                  </div>
+                </>
               )}
-              <div style={{display:"flex",flexDirection:"column",gap:12}}>
-                {currentScenario.options.map((option, i) => (
-                  <div key={option.id} style={{background:"#1a0000",border:"2px solid #ff0000",padding:"18px 20px",cursor:"pointer",transition:"all .15s",borderRadius:"8px",position:"relative",overflow:"hidden"}} onClick={() => handleOptionSelect(option)} onMouseEnter={e=>{e.currentTarget.style.borderColor="#ff6600";e.currentTarget.style.background="#2d0000";e.currentTarget.style.boxShadow="0 0 20px rgba(255,0,0,0.3)";}} onMouseLeave={e=>{e.currentTarget.style.borderColor="#ff0000";e.currentTarget.style.background="#1a0000";e.currentTarget.style.boxShadow="none";}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:12}}>
-                      <div style={{flex:1}}>
-                        <div style={{fontFamily:T.mono,fontSize:10,color:"#ff6600",letterSpacing:2,marginBottom:4,animation:"pulse 2s infinite"}}>⚠️ OPTION {i + 1}</div>
-                        <div style={{fontFamily:T.sans,fontSize:13,color:"#ffcccc",lineHeight:1.5,fontWeight:600}}>{option.label}</div>
-                      </div>
-                      <div style={{fontFamily:T.mono,fontSize:8,color:"#ff9999",whiteSpace:"nowrap",animation:"flash 1s infinite"}}>DANGER →</div>
-                    </div>
-                    {option.effect && Object.keys(option.effect).length > 0 && (
-                      <div style={{marginTop:12,paddingTop:12,borderTop:"2px solid #ff0000"}}>
-                        <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:6,animation:"pulse 1.5s infinite"}}>⚡ DANGER ANALYSIS</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                          {/* Benefits */}
-                          <div>
-                            <div style={{fontFamily:T.mono,fontSize:7,color:"#00ff00",letterSpacing:1,marginBottom:4}}>💊 GAINS (Temporary)</div>
-                            <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                              {Object.entries(option.effect).map(([key, value]) => {
-                                const effectLabel = FM_STATE_META[key]?.label || key;
-                                const isPositive = typeof value === 'string' && value.startsWith('+');
-                                
-                                if (isPositive) {
-                                  return (
-                                    <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:9}}>
-                                      <span style={{fontFamily:T.sans,color:"#ffaaaa"}}>{effectLabel}</span>
-                                      <span style={{fontFamily:T.mono,color:"#00ff00",fontWeight:600,animation:"flash 2s infinite"}}>
-                                        {typeof value === 'string' ? value.replace('+', '+') : value}
-                                      </span>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })}
-                            </div>
-                          </div>
-                          
-                          {/* Risks */}
-                          <div>
-                            <div style={{fontFamily:T.mono,fontSize:7,color:"#ff0000",letterSpacing:1,marginBottom:4,animation:"flash 1s infinite"}}>☠️ CONSEQUENCES (Permanent)</div>
-                            <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                              {Object.entries(option.effect).map(([key, value]) => {
-                                const effectLabel = FM_STATE_META[key]?.label || key;
-                                const isNegative = typeof value === 'string' && value.startsWith('-');
-                                
-                                if (isNegative) {
-                                  return (
-                                    <div key={key} style={{display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:9}}>
-                                      <span style={{fontFamily:T.sans,color:"#ffaaaa"}}>{effectLabel}</span>
-                                      <span style={{fontFamily:T.mono,color:"#ff0000",fontWeight:600,animation:"pulse 1s infinite"}}>
-                                        {typeof value === 'string' ? value.replace('-', '−') : value}
-                                      </span>
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          
-          {phase === "result" && selectedOption && (
-            <div>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:10}}>DECISION MADE</div>
-              <div style={{fontFamily:T.sans,fontSize:15,color:"#999",lineHeight:1.6,marginBottom:20}}>{selectedOption.label}</div>
-              
-              <div style={{fontFamily:T.mono,fontSize:9,color:T.muted,letterSpacing:2,marginBottom:14}}>{selectedOption.id.toUpperCase()} · MONTH {currentMonth}</div>
-              <div style={{background:T.surf,border:`1px solid ${T.gold}`,padding:"16px 18px",marginBottom:20}}>
-                <div style={{fontFamily:T.mono,fontSize:10,color:T.gold,marginBottom:8}}>IMPACT ANALYSIS</div>
-                <div style={{fontFamily:T.sans,fontSize:11,color:"#666",lineHeight:1.6}}>
-                  Your decision has been implemented. Review the state changes and continue to the next scenario.
-                </div>
-                {state.monthly_expense_deduction > 0 && (
-                  <div style={{marginTop:12,paddingTop:12,borderTop:`1px solid ${T.border}`}}>
-                    <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>MONTHLY EXPENSES</div>
-                    <div style={{fontFamily:T.sans,fontSize:10,color:"#666",lineHeight:1.4}}>
-                      Monthly expenses of PKR {fmtMoney(state.monthly_expense_deduction)} have been deducted from cash on hand
-                    </div>
-                    <div style={{fontFamily:T.mono,fontSize:9,color:T.dim,marginTop:4}}>
-                      Previous: PKR {fmtMoney(state.previous_cash_on_hand)} → Current: PKR {fmtMoney(state.cash_on_hand)}
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2,animation:"fadeIn .3s both"}}>CONTINUE TO NEXT SCENARIO →</button>
-            </div>
-          )}
-          
-          {isEnding && (
-            <div>
-              <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:10}}>{endLabel}</div>
-              <div style={{background:T.surf,border:`1px solid ${endColor}`,padding:"24px 26px",marginBottom:20}}>
-                <div style={{fontFamily:T.sans,fontSize:15,color:endColor,fontWeight:700,marginBottom:12}}>{currentScenario.type === "success" ? "FreshMart Recovered!" : currentScenario.type === "failure" ? "FreshMart Failed" : "FreshMart Survives"}</div>
-                <pre style={{fontFamily:T.sans,fontSize:13,color:"#999",lineHeight:1.8,whiteSpace:"pre-wrap"}}>{currentScenario.description}</pre>
-                <div style={{fontFamily:T.mono,fontSize:9,color:endColor,marginTop:12}}>Month {currentMonth} · Recovery Score: {Math.round(recoveryScore)}%</div>
-              </div>
-              <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"13px",cursor:"pointer",letterSpacing:2}}>VIEW FULL RESULTS & SHARE →</button>
             </div>
           )}
 
-          {decisionHistory.length > 0 && (
-            <div style={{marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:20}}>
-              <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>DECISION PATH</div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {decisionHistory.map((decision, i) => (
-                  <div key={i} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
-                    <div style={{width:16,height:16,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span></div>
-                    <div>
-                      <div style={{fontFamily:T.sans,fontSize:11,color:"#666"}}>{decision.optionLabel}</div>
-                      <div style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>Month {decision.month}</div>
+          {phase==="result"&&selectedOption&&(
+            <div style={{animation:"fadeUp .3s both"}}>
+              <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:3,marginBottom:12}}>DECISION LOCKED IN</div>
+              <FMReactionBox optionId={selectedOption.id} ownerName={ownerName}/>
+              <div style={{background:T.surf,border:`1px solid ${T.gold}44`,padding:"15px 18px",marginBottom:16}}>
+                <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,fontWeight:600,marginBottom:8}}>{selectedOption.label}</div>
+                <div style={{fontFamily:T.mono,fontSize:9,color:T.gold}}>+{selectedOption.xp||10} XP earned</div>
+                {(state.monthly_expense_deduction||0)>0&&(
+                  <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
+                    <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1.5,marginBottom:4}}>MONTHLY BURN DEDUCTED</div>
+                    <div style={{fontFamily:T.mono,fontSize:11,color:T.dim}}>
+                      PKR {fmtMoneyFM(state.previous_cash_on_hand)} → PKR {fmtMoneyFM(state.cash_on_hand)}
                     </div>
                   </div>
-                ))}
+                )}
               </div>
+              <button onClick={handleContinue} style={{width:"100%",background:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:"pointer",letterSpacing:2}}>
+                CONTINUE TO MONTH {Math.min(currentMonth+1,6)} →
+              </button>
+            </div>
+          )}
+
+          {phase==="ending"&&isEnding&&(
+            <div style={{animation:"fadeUp .3s both"}}>
+              <div style={{fontFamily:T.mono,fontSize:8,color:endColor,letterSpacing:3,marginBottom:12}}>
+                {currentScenario.type==="success"?"OPTIMAL RECOVERY":currentScenario.type==="failure"?"BUSINESS FAILURE":"SURVIVING — BARELY"}
+              </div>
+              <div style={{background:T.surf,border:`1px solid ${endColor}`,padding:"24px 26px",marginBottom:20}}>
+                <div style={{fontFamily:T.serif,fontSize:20,color:endColor,fontWeight:800,marginBottom:14}}>
+                  {currentScenario.type==="success"?`${ownerName.split(" ")[0]}'s Store Recovered`
+                   :currentScenario.type==="failure"?"The Store Closed":"The Store Survives"}
+                </div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                  <div style={{background:T.bg,border:`1px solid ${T.border}`,padding:"10px 12px"}}>
+                    <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1.5,marginBottom:4}}>RECOVERY SCORE</div>
+                    <div style={{fontFamily:T.serif,fontSize:26,color:endColor,fontWeight:900}}>{Math.round(recoveryScore)}%</div>
+                  </div>
+                  <div style={{background:T.bg,border:`1px solid ${T.border}`,padding:"10px 12px"}}>
+                    <div style={{fontFamily:T.mono,fontSize:7,color:T.dim,letterSpacing:1.5,marginBottom:4}}>DECISIONS MADE</div>
+                    <div style={{fontFamily:T.serif,fontSize:26,color:T.txt,fontWeight:900}}>{decisionHistory.length}</div>
+                  </div>
+                </div>
+              </div>
+              <button onClick={handleContinue} style={{width:"100%",background:endColor,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"14px",cursor:"pointer",letterSpacing:2}}>
+                VIEW FULL RESULTS & CLAIM REWARDS →
+              </button>
+            </div>
+          )}
+
+          {decisionHistory.length>0&&phase!=="dialogue"&&(
+            <div style={{marginTop:24,borderTop:`1px solid ${T.border}`,paddingTop:18}}>
+              <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:3,marginBottom:10}}>DECISION PATH</div>
+              {decisionHistory.map((d,i)=>(
+                <div key={i} style={{display:"flex",gap:10,alignItems:"flex-start",marginBottom:8}}>
+                  <div style={{width:18,height:18,background:T.muted,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <span style={{fontFamily:T.mono,fontSize:7,color:T.dim}}>{i+1}</span>
+                  </div>
+                  <div>
+                    <div style={{fontFamily:T.sans,fontSize:11,color:T.dim}}>{d.optionLabel}</div>
+                    <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:1}}>Month {d.month} · +{d.xpEarned} XP</div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        <div style={{width:isMobile?"100%":268,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?"16px 12px":"20px 16px",flexShrink:0}}>
-          <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:10}}>ANNOUNCEMENTS</div>
-          
-          {/* CRITICAL CASH ALERT */}
-          {state.cash_on_hand <= 0 && (
-            <div style={{background:"#2d0000",border:"2px solid #ff0000",padding:"12px",marginBottom:12,animation:"pulse 2s infinite"}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:14,marginTop:1,color:"#ff0000"}}>🚨</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",letterSpacing:1,marginBottom:4}}>RED ALERT - CASH CRISIS</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
-                    <strong>CASH RESERVES DEPLETED!</strong> Used line of credit to pay expenses. Interest accumulating daily.
+        {/* Sidebar */}
+        <div style={{width:isMobile?"100%":268,
+          borderLeft:isMobile?"none":`2px solid ${T.border}`,
+          borderTop:isMobile?`2px solid ${T.border}`:"none",
+          overflowY:"auto",padding:isMobile?"16px 0":"20px 16px",flexShrink:0}}>
+
+          <div style={{marginBottom:18,background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}>
+            <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:2,marginBottom:10}}>TIMELINE</div>
+            <div style={{display:"flex",gap:3}}>
+              {[1,2,3,4,5,6].map(m=>{
+                const done=m<currentMonth,cur=m===currentMonth;
+                return (
+                  <div key={m} style={{flex:1,height:26,
+                    background:done?T.gold:cur?T.surf2:T.bg,
+                    border:`1px solid ${cur?T.gold:done?T.goldM:T.border}`,
+                    display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <span style={{fontFamily:T.mono,fontSize:8,color:done?"#000":cur?T.gold:T.muted}}>{m}</span>
                   </div>
-                </div>
-              </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:2,marginBottom:10}}>LIVE FEED</div>
+          {ann.length===0&&(
+            <div style={{background:T.surf,border:`1px solid ${T.border}`,borderLeft:`3px solid ${T.muted}`,padding:"11px 13px",marginBottom:8}}>
+              <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:1.5,marginBottom:4}}>STATUS</div>
+              <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.5}}>Operations ongoing. Make your decisions wisely.</div>
             </div>
           )}
-
-          {/* LINE OF CREDIT TICKING BOMB */}
-          {state.accumulated_debt > 0 && (
-            <div style={{background:"#1a0000",border:"2px solid #ff6600",padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:14,marginTop:1,color:"#ff6600",animation:"pulse 1s infinite"}}>💣</span>
+          {ann.map((a,i)=>(
+            <div key={i} style={{background:T.surf,border:`1px solid ${a.color}33`,
+              borderLeft:`3px solid ${a.color}`,padding:"10px 12px",marginBottom:8,
+              animation:a.pulse?"pulse 2s infinite":"none"}}>
+              <div style={{display:"flex",gap:8,alignItems:"flex-start"}}>
+                <span style={{fontSize:13,flexShrink:0}}>{a.icon}</span>
                 <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:4}}>
-                    {state.escalation_stage === 1 ? "Stage 1 → Pressure Building" :
-                     state.escalation_stage === 2 ? "Stage 2 → System Strain" :
-                     state.escalation_stage === 3 ? "Stage 3 → Critical Failure Risk" : "TICKING BOMB - COMPOUNDING DEBT"}
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffaa99",lineHeight:1.4}}>
-                    Accumulated Debt: <strong>PKR {fmtMoney(state.accumulated_debt)}</strong>
-                  </div>
-                  <div style={{fontFamily:T.mono,fontSize:9,color:"#ff8800",marginTop:4}}>
-                    + PKR {fmtMoney(state.accumulated_debt * 0.15)}/month interest
-                  </div>
-                  {state.escalation_stage < 3 && (
-                    <div style={{fontFamily:T.mono,fontSize:8,color:"#ffaa99",marginTop:2}}>
-                      ⏳ Next escalation in {3 - state.escalation_stage} turns
-                    </div>
-                  )}
-                  {state.escalation_stage === 3 && (
-                    <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",marginTop:2,animation:"flash 0.5s infinite"}}>
-                      😄 IMMINENT COLLAPSE - ACT NOW OR DIE
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* LOAN TAKEN ANNOUNCEMENT */}
-          {state.loan_taken_this_month > 0 && (
-            <div style={{background:"#1a0000",border:"2px solid #ff6600",padding:"12px",marginBottom:12,animation:"flash 2s infinite"}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:14,marginTop:1,color:"#ff6600"}}>💳</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff6600",letterSpacing:1,marginBottom:4}}>LINE OF CREDIT USED</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
-                    <strong>Loan Taken: PKR {fmtMoney(state.loan_taken_this_month)}</strong>
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ffaaaa",marginTop:4}}>
-                    Insufficient cash to cover expenses. Line of credit activated with 15% monthly interest.
-                  </div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
-                    This loan will compound monthly and increase your debt burden.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* PERMANENT CONSEQUENCES */}
-          {Object.entries(permanentConsequences).map(([type, consequence]) => (
-            <div key={type} style={{background:"#1a0000",border:"2px solid #ff0000",padding:"12px",marginBottom:12,animation:consequence.severity === 'ESCALATED' ? "flash 1s infinite" : "pulse 2s infinite"}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:14,marginTop:1,color:"#ff0000"}}>🔴</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#ff0000",letterSpacing:1,marginBottom:4}}>
-                    {consequence.name} ({consequence.severity})
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
-                    {consequence.description}
-                  </div>
-                  <div style={{fontFamily:T.mono,fontSize:9,color:"#ff6600",marginTop:4}}>
-                    Penalty increased by {Math.round((consequence.penalty - 1) * 100)}%
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
-                    {consequence.severity === 'ESCALATED' ? 'Getting worse each month...' : 'Permanent business damage'}
-                  </div>
+                  <div style={{fontFamily:T.mono,fontSize:7,color:a.color,letterSpacing:1.5,marginBottom:4}}>{a.title}</div>
+                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.5}}>{a.body}</div>
                 </div>
               </div>
             </div>
           ))}
-
-          {/* DECISION RISK WARNING */}
-          {state.last_decision_risk && state.last_decision_risk.risk.level !== "LOW" && (
-            <div style={{background:"#1a0000",border:`2px solid ${state.last_decision_risk.risk.color}`,padding:"12px",marginBottom:12,animation:"pulse 1.5s infinite"}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:14,marginTop:1,color:state.last_decision_risk.risk.color}}>⚠️</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:state.last_decision_risk.risk.color,letterSpacing:1,marginBottom:4}}>
-                    {state.last_decision_risk.risk.level} RISK - DECISION CONSEQUENCES
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#ffcccc",lineHeight:1.4}}>
-                    <strong>Month {state.last_decision_risk.month} Decision:</strong> "{state.last_decision_risk.option}"
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ffaaaa",marginTop:4}}>
-                    Risk Factors: {state.last_decision_risk.risk.factors.join(" • ")}
-                  </div>
-                  <div style={{fontFamily:T.sans,fontSize:9,color:"#ff9999",marginTop:4,fontStyle:"italic"}}>
-                    This decision may lead to business failure if not managed carefully.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Monthly Expense Notice */}
-          {state.monthly_expense_deduction > 0 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.gold}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>💸</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,letterSpacing:1,marginBottom:4}}>MONTHLY EXPENSES</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    Monthly expenses of PKR {fmtMoney(state.monthly_expense_deduction)} have been deducted from cash on hand.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Supplier Pressure Notice */}
-          {currentMonth >= 2 && state.debt_stress > 0.6 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.red}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>⚠️</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:1,marginBottom:4}}>SUPPLIER PRESSURE</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    Suppliers are pressing for loan payments. High debt stress affecting business operations.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Customer Feedback Notice */}
-          {state.customer_satisfaction < 0.4 && currentMonth >= 2 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.blue}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>📢</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.blue,letterSpacing:1,marginBottom:4}}>CUSTOMER FEEDBACK</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    Customer satisfaction is low. Reviews indicate quality and service issues need attention.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Employee Morale Notice */}
-          {state.employee_morale < 0.3 && currentMonth >= 3 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.orange}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>👥</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.orange,letterSpacing:1,marginBottom:4}}>STAFF MORALE</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    Employee morale is declining. Staff are expressing concerns about job security and working conditions.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Dead Stock Alert */}
-          {state.dead_stock_units > 150 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.red}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>📦</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.red,letterSpacing:1,marginBottom:4}}>INVENTORY ALERT</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    High dead stock levels ({state.dead_stock_units} units). Storage costs are increasing and cash is tied up.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* Positive Performance Notice */}
-          {state.monthly_sales >= state.month_target_3 && currentMonth <= 3 && (
-            <div style={{background:T.surf2,border:`1px solid ${T.green}`,padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2}}>🎉</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:T.green,letterSpacing:1,marginBottom:4}}>PERFORMANCE UPDATE</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                    Excellent progress! Monthly sales target of PKR {fmtMoney(state.month_target_3)} has been achieved.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-          
-          {/* SYSTEM JUDGMENT */}
-          {currentMonth >= 3 && decisionHistory.length >= 2 && (
-            <div style={{background:"#0d1117",border:"2px solid #3b82f6",padding:"12px",marginBottom:12}}>
-              <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-                <span style={{fontSize:12,marginTop:2,color:"#3b82f6"}}>📊</span>
-                <div>
-                  <div style={{fontFamily:T.mono,fontSize:8,color:"#3b82f6",letterSpacing:1,marginBottom:4}}>SYSTEM ANALYSIS</div>
-                  <div style={{fontFamily:T.sans,fontSize:10,color:"#a8c7ff",lineHeight:1.4}}>
-                    {decisionHistory.length >= 2 && decisionHistory[0]?.optionLabel && (
-                      <div>
-                        {decisionHistory[0].optionLabel.includes("Inventory Clearance") && (
-                          <div>
-                            <strong>You prioritized cost-cutting over service</strong>
-                            <div style={{marginTop:4,color:"#ff6600"}}>Result: customer churn + revenue risk</div>
-                          </div>
-                        )}
-                        {decisionHistory[0].optionLabel.includes("Expansion") && (
-                          <div>
-                            <strong>You prioritized growth over stability</strong>
-                            <div style={{marginTop:4,color:"#ffaa00"}}>Result: cash strain + operational complexity</div>
-                          </div>
-                        )}
-                        {decisionHistory[0].optionLabel.includes("Marketing") && (
-                          <div>
-                            <strong>You prioritized visibility over efficiency</strong>
-                            <div style={{marginTop:4,color:"#ffaa00"}}>Result: brand awareness + diminishing returns</div>
-                          </div>
-                        )}
-                        {decisionHistory[1]?.optionLabel && decisionHistory[1].optionLabel.includes("Poor Allocation") && (
-                          <div>
-                            <strong>You made reactive decisions under pressure</strong>
-                            <div style={{marginTop:4,color:"#ff0000"}}>Result: scattered resources + missed opportunities</div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    <div style={{marginTop:6,fontStyle:"italic",color:"#9ca3af"}}>
-                      You're learning strategy subconsciously through consequences.
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Default Notice */}
-          <div style={{background:T.surf2,border:`1px solid ${T.border}`,padding:"12px",marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"flex-start",gap:8}}>
-              <span style={{fontSize:12,marginTop:2}}>📋</span>
-              <div>
-                <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:1,marginBottom:4}}>BUSINESS UPDATE</div>
-                <div style={{fontFamily:T.sans,fontSize:10,color:T.dim,lineHeight:1.4}}>
-                  FreshMart operations continue. Monitor key metrics and make strategic decisions to achieve growth targets.
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          <div style={{marginTop:10,fontFamily:T.mono,fontSize:7,color:T.muted,lineHeight:1.6,padding:"8px 10px",border:`1px dashed ${T.muted}`}}>
-            📢 Check announcements regularly for important business updates and alerts.
-          </div>
         </div>
       </div>
     </div>
@@ -2414,11 +2253,11 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
   const [hov,setHov]=useState(null);
   const [isMobile,setIsMobile]=useState(()=>{
     if(typeof window==="undefined") return false;
-    return window.innerWidth<=900;
+    return window.innerWidth<=768;
   });
   useEffect(()=>{
     if(typeof window==="undefined") return;
-    const onResize=()=>setIsMobile(window.innerWidth<=900);
+    const onResize=()=>setIsMobile(window.innerWidth<=768);
     onResize();
     window.addEventListener("resize",onResize);
     return ()=>window.removeEventListener("resize",onResize);
@@ -2435,32 +2274,28 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
         <HexBg/>
         <div style={{position:"relative",animation:"fadeUp .5s both"}}>
           <div style={{fontFamily:T.mono,fontSize:9,color:T.gold,letterSpacing:4,marginBottom:12}}>▸ COGNITIVE SPORTS ARENA FOR CA STUDENTS</div>
-          <h1 style={{fontFamily:T.serif,fontSize:"clamp(28px,4vw,50px)",fontWeight:900,lineHeight:1.05,color:T.txt,marginBottom:12}}>Where Financial<br/><span style={{color:T.gold}}>Intelligence</span> Competes.</h1>
-          <p style={{fontFamily:T.sans,fontSize:13.5,color:T.dim,lineHeight:1.8,maxWidth:460}}>Real companies. Real decisions. Real scoring. Pick your mode, dissect the business, earn your rank.</p>
         </div>
       </div>
       <div style={{flex:1,display:"flex",flexDirection:isMobile?"column":"row",gap:0,overflow:isMobile?"visible":"hidden"}}>
-        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"24px 28px",display:"flex",flexDirection:"column",gap:20}}>
+        <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"24px 28px",display:"flex",flexDirection:"column",gap:isMobile?16:20}}>
           <XPBar user={user}/>
           <div>
-            <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>GAME MODES</div>
-            <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+            <div style={{fontFamily:T.mono,fontSize:isMobile?7:8,color:T.muted,letterSpacing:3,marginBottom:isMobile?8:12}}>GAME MODES</div>
+            <div style={{display:"flex",gap:isMobile?8:12,flexWrap:"wrap"}}>
               {modes.map(m=>(
-                <div key={m.id} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} onClick={()=>onNav(m.id)} style={{flex:1,minWidth:isMobile?"100%":230,background:hov===m.id?"#0e0e12":T.surf,border:`2px solid ${hov===m.id?m.color:T.border}`,padding:"24px 22px",cursor:"pointer",transition:"all .2s",position:"relative",boxShadow:hov===m.id?`0 0 40px ${m.color}12`:"none"}}>
-                  <div style={{position:"absolute",top:12,right:12,background:m.color,color:"#000",fontFamily:T.mono,fontSize:8,fontWeight:800,padding:"2px 8px",letterSpacing:2}}>{m.badge}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}><span style={{fontSize:24,color:m.color}}>{m.icon}</span><span style={{fontFamily:T.mono,fontSize:9,color:m.color,letterSpacing:3}}>{m.code}</span></div>
-                  <h3 style={{fontFamily:T.serif,fontSize:20,color:T.txt,marginBottom:4,fontWeight:700}}>{m.title}</h3>
-                  <div style={{fontFamily:T.mono,fontSize:9,color:m.color,letterSpacing:2,marginBottom:10,textTransform:"uppercase"}}>{m.sub}</div>
-                  <p style={{fontFamily:T.sans,fontSize:12.5,color:"#666",lineHeight:1.65,marginBottom:16}}>{m.desc}</p>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontFamily:T.mono,fontSize:10,color:T.muted}}><span style={{color:m.color}}>{typeof m.active==="number"?m.active.toLocaleString():m.active}</span> active</span>
-                    <span style={{fontFamily:T.mono,fontSize:10,color:m.color,letterSpacing:2}}>ENTER →</span>
+                <div key={m.id} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} onClick={()=>onNav(m.id)} style={{flex:1,minWidth:isMobile?"100%":230,background:hov===m.id?"#0e0e12":T.surf,border:`2px solid ${hov===m.id?m.color:T.border}`,padding:isMobile?"16px 14px":"24px 22px",cursor:"pointer",transition:"all .2s",position:"relative",boxShadow:hov===m.id?`0 0 40px ${m.color}12`:"none"}}>
+                  <div style={{position:"absolute",top:isMobile?8:12,right:isMobile?8:12,background:m.color,color:"#000",fontFamily:T.mono,fontSize:isMobile?7:8,fontWeight:800,padding:"2px 6px",letterSpacing:2}}>{m.badge}</div>
+                  <div style={{display:"flex",alignItems:"center",gap:isMobile?6:10,marginBottom:isMobile?10:14}}>
+                    <span style={{fontSize:isMobile?20:24,color:m.color}}>{m.icon}</span>
+                    <span style={{fontFamily:T.mono,fontSize:isMobile?8:9,color:m.color,letterSpacing:3}}>{m.code}</span>
                   </div>
+                  <h3 style={{fontFamily:T.serif,fontSize:isMobile?16:20,color:T.txt,marginBottom:isMobile?3:4,fontWeight:700}}>{m.title}</h3>
+                  <div style={{fontFamily:T.mono,fontSize:isMobile?7:8,color:m.color,letterSpacing:2,marginBottom:isMobile?6:8}}>{m.sub}</div>
+                  <p style={{fontFamily:T.sans,fontSize:isMobile?12:13.5,color:T.dim,lineHeight:1.6,maxWidth:isMobile?320:460}}>{m.desc}</p>
                 </div>
               ))}
             </div>
-          </div>
-          <div>
+         <div>
             <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>FEATURED CASES</div>
             <div style={{display:"flex",flexDirection:"column",gap:7}}>
               {list.map(c=>(
@@ -2473,7 +2308,11 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
                   onMouseLeave={e=>{e.currentTarget.style.borderColor=T.border;e.currentTarget.style.background=T.surf;}}>
                   <div style={{width:3,height:38,background:DC[c.diff],flexShrink:0}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontFamily:T.sans,fontSize:13,color:"#ddd",fontWeight:600,marginBottom:2}}>{c.label}{c.hasSim&&<span style={{marginLeft:8,fontFamily:T.mono,fontSize:7,color:T.blue,border:`1px solid ${T.blue}44`,padding:"1px 6px",letterSpacing:1}}>SIM</span>}</div>
+                    <div style={{display:"flex",gap:7,alignItems:"center",marginBottom:5,flexWrap:"wrap"}}>
+                      <span style={{fontFamily:T.sans,fontSize:13,color:"#ddd",fontWeight:600,marginBottom:2}}>{c.label}{c.hasSim&&<span style={{marginLeft:8,fontFamily:T.mono,fontSize:7,color:T.blue,border:`1px solid ${T.blue}44`,padding:"1px 6px",letterSpacing:1}}>SIM</span>}</span>
+                      <Tag color={DC[c.diff]} small>{c.diff}</Tag>
+                      <Tag color={c.type==="financial"?T.blue:T.gold} small filled>{c.type==="financial"?"FINANCIAL":"SCENARIO"}</Tag>
+                    </div>
                     <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1}}>{c.sub}</div>
                     {c.hasSim&&(
                       <button
@@ -2482,31 +2321,37 @@ function Lobby({onNav,user,leaderboard,leaderboardLoading,feed,caseList}){
                           if(canAccessDifficulty(user?.xp||0, c.diff)) onNav(`sim-${c.id}`);
                         }}
                         disabled={!canAccessDifficulty(user?.xp||0, c.diff)}
-                        style={{marginTop:8,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:8,padding:"5px 9px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",letterSpacing:1.2,opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.45}}
+                        style={{marginTop:8,background:"transparent",border:`1px solid ${T.blue}66`,color:T.blue,fontFamily:T.mono,fontSize:9,padding:"5px 9px",cursor:canAccessDifficulty(user?.xp||0, c.diff)?"pointer":"not-allowed",letterSpacing:1.2,opacity:canAccessDifficulty(user?.xp||0, c.diff)?1:0.45}}
                       >
                         OPEN LIVE SIM
                       </button>
                     )}
                     {!canAccessDifficulty(user?.xp||0, c.diff)&&(
                       <div style={{fontFamily:T.mono,fontSize:8,color:T.red,marginTop:5,letterSpacing:1}}>
-                        Unlocks at Lv {DIFF_UNLOCK_LEVEL[c.diff]}
+                        LOCKED · Complete more cases to unlock
                       </div>
                     )}
                   </div>
-                  <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                    <Tag color={DC[c.diff]} small>{c.diff}</Tag>
-                    <Tag color={c.type==="financial"?T.blue:T.gold} small filled>{c.type==="financial"?"FS":"CASE"}</Tag>
-                    <span style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>avg {c.avgScore||"—"}</span>
+                  <div style={{textAlign:"right",flexShrink:0}}>
+                    <div style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>avg score</div>
+                    <div style={{fontFamily:T.mono,fontSize:15,color:T.gold,fontWeight:700}}>{c.avgScore}</div>
                   </div>
                 </div>
               ))}
             </div>
           </div>
-        </div>
+
+        </div> {/* closes flex:1 left panel (line 2445) */}
+
         <div style={{width:isMobile?"100%":276,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?12:18,display:"flex",flexDirection:"column",gap:14,flexShrink:0}}>
           <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
           <FeedPanel feed={feed}/>
         </div>
+      </div>
+    </div>
+      <div style={{width:isMobile?"100%":276,borderLeft:isMobile?"none":`2px solid ${T.border}`,borderTop:isMobile?`2px solid ${T.border}`:"none",overflowY:"auto",padding:isMobile?12:18,display:"flex",flexDirection:"column",gap:14,flexShrink:0}}>
+        <LeaderboardPanel leaderboard={leaderboard} currentUserId={user?.id} loading={leaderboardLoading}/>
+        <FeedPanel feed={feed}/>
       </div>
     </div>
   );
@@ -2521,11 +2366,11 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
   const [hov,setHov]=useState(null);
   const [isMobile,setIsMobile]=useState(()=>{
     if(typeof window==="undefined") return false;
-    return window.innerWidth<=900;
+    return window.innerWidth<=768;
   });
   useEffect(()=>{
     if(typeof window==="undefined") return;
-    const onResize=()=>setIsMobile(window.innerWidth<=900);
+    const onResize=()=>setIsMobile(window.innerWidth<=768);
     onResize();
     window.addEventListener("resize",onResize);
     return ()=>window.removeEventListener("resize",onResize);
@@ -2539,7 +2384,10 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
         <div style={{flex:1,overflowY:isMobile?"visible":"auto",padding:isMobile?"16px 12px":"32px 28px"}}>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:14}}>CHOOSE FORMAT</div>
           <div style={{display:"flex",gap:12,marginBottom:32,flexWrap:"wrap"}}>
-            {[{id:"scenario",icon:"◉",color:T.gold,title:"Business Scenario",sub:"Strategic Judgement · Advisory",desc:"Narrative brief with key data. Analyse the situation, make recommendations, defend logic. Some cases include live branching simulations."},{id:"financial",icon:"▦",color:T.blue,title:"Financial Statement",sub:"Technical Precision · IFRS",desc:"Actual financials — P&L, Balance Sheet, Cash Flow, Ratio Analysis. Calculate ratios, identify anomalies, recommend capital actions."}].map(m=>(
+            {[
+              {id:"scenario",icon:"◉",color:T.gold,title:"Business Scenario",sub:"Strategic Judgement · Advisory",desc:"Narrative brief with key data. Analyse situation, make recommendations, defend logic. Some cases include live branching simulations."},
+              {id:"financial",icon:"▦",color:T.blue,title:"Financial Statement",sub:"Technical Precision · IFRS",desc:"Actual financials — P&L, Balance Sheet, Cash Flow, Ratio Analysis. Calculate ratios, identify anomalies, recommend capital actions."}
+            ].map(m=>(
               <div key={m.id} onClick={()=>setFilter(m.id)} onMouseEnter={()=>setHov(m.id)} onMouseLeave={()=>setHov(null)} style={{flex:1,minWidth:isMobile?"100%":220,background:filter===m.id?`${m.color}0a`:T.surf,border:`2px solid ${filter===m.id||hov===m.id?m.color:T.border}`,padding:"20px 18px",cursor:"pointer",transition:"all .2s"}}>
                 <div style={{fontSize:22,color:m.color,marginBottom:10}}>{m.icon}</div>
                 <div style={{fontFamily:T.serif,fontSize:17,color:T.txt,marginBottom:4,fontWeight:700}}>{m.title}</div>
@@ -2549,7 +2397,7 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
             ))}
           </div>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:3,marginBottom:12}}>
-            {filter==="all"?"ALL CASES":filter==="scenario"?"BUSINESS SCENARIOS":"FINANCIAL STATEMENTS"}
+            {filter==="all" ? "ALL CASES" : filter==="scenario" ? "BUSINESS SCENARIOS" : "FINANCIAL STATEMENTS"}
             <span style={{color:T.dim,marginLeft:8}}>({filtered.length} available)</span>
           </div>
           <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
@@ -2577,9 +2425,8 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
             })}
           </div>
           <div style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1,marginBottom:12}}>
-            Your level: <span style={{color:T.gold,fontWeight:700}}>Lv {xpToLevel(user?.xp||0)}</span> ·
-            GROWTH unlocks at Lv {DIFF_UNLOCK_LEVEL.GROWTH} ·
-            APEX unlocks at Lv {DIFF_UNLOCK_LEVEL.APEX}
+            Current Rank: <span style={{color:T.gold,fontWeight:700}}>{xpToRank(user?.xp||0)}</span> ·
+            Complete more cases to progress
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filtered.map(c=>(
@@ -2602,7 +2449,7 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
                   <div style={{fontFamily:T.sans,fontSize:12,color:"#555"}}>{c.sub}</div>
                   {!canAccessDifficulty(user?.xp||0, c.diff)&&(
                     <div style={{fontFamily:T.mono,fontSize:8,color:T.red,marginTop:7,letterSpacing:1}}>
-                      LOCKED · Unlocks at Lv {DIFF_UNLOCK_LEVEL[c.diff]}
+                      LOCKED · Complete more cases to unlock
                     </div>
                   )}
                   {c.hasSim&&(
@@ -2634,6 +2481,7 @@ function CaseBrowser({onNav,onBack,caseList,user,leaderboard,leaderboardLoading,
     </div>
   );
 }
+
 
 /* ═══════════════════════════════════════════════════════════════════
    SIM ROOM (MCQ cases with ratio / cashflow analysis tabs)
@@ -3804,7 +3652,9 @@ function AuthModal({onClose, onAuth}){
           rank: "SEED",
           cases_completed: 0,
           xp_gained_today: 0,
+          commission: 0,
         },
+        authType: "signup",
       });
 
     } else {
@@ -3842,7 +3692,11 @@ function AuthModal({onClose, onAuth}){
 
       onAuth({
         token: session?.access_token,
-        user: profile,
+        user: {
+          ...profile,
+          commission: profile.commission || 0,
+        },
+        authType: "signin",
       });
     }
 
@@ -3880,6 +3734,157 @@ function AuthModal({onClose, onAuth}){
         <button onClick={handleSubmit} disabled={loading} style={{width:"100%",marginTop:20,background:loading?T.mid:T.gold,border:"none",color:"#000",fontFamily:T.mono,fontSize:11,fontWeight:800,padding:"12px",cursor:loading?"not-allowed":"pointer",letterSpacing:2,transition:"background .15s"}}>
           {loading?"LOADING…":mode==="signin"?"SIGN IN →":"CREATE ACCOUNT →"}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   AUTH NOTIFICATION — vintage golden styled notifications
+═══════════════════════════════════════════════════════════════════ */
+function AuthNotification({ type, onDone, user }){
+  useEffect(() => {
+    const t = setTimeout(onDone, 10000); // 10 seconds auto-dismiss
+    return () => clearTimeout(t);
+  }, [onDone]);
+
+  const isSignUp = type === "signup";
+  const userXp = user?.xp || 0;
+  const userLevel = xpToLevel(userXp);
+  const userRank = xpToRank(userXp);
+  
+  const handleBackdropClick = (e) => {
+    // Only dismiss if clicking the backdrop, not the notification itself
+    if (e.target === e.currentTarget) {
+      onDone();
+    }
+  };
+  
+  return (
+    <div 
+      style={{
+        position: "fixed", 
+        top: 0, 
+        left: 0, 
+        right: 0,
+        bottom: 0,
+        background: "rgba(0, 0, 0, 0.4)",
+        zIndex: 1000, 
+        animation: "fadeIn .3s both",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center"
+      }}
+      onClick={handleBackdropClick}
+    >
+      <div style={{
+        background: "linear-gradient(135deg, #D4AF37 0%, #B8860B 100%)", 
+        border: "3px solid #FFD700", 
+        padding: "32px 40px", 
+        animation: "fadeUp .5s both",
+        minWidth: 320,
+        maxWidth: 400,
+        borderRadius: "8px",
+        boxShadow: "0 8px 32px rgba(212, 175, 55, 0.3)",
+        textAlign: "center",
+        position: "relative"
+      }}>
+        {/* Vintage decorative elements */}
+        <div style={{
+          position: "absolute",
+          top: "8px",
+          left: "8px",
+          right: "8px",
+          bottom: "8px",
+          border: "1px solid rgba(255, 255, 255, 0.3)",
+          borderRadius: "4px",
+          pointerEvents: "none"
+        }} />
+        
+        {/* Main headline with vintage styling */}
+        <div style={{
+          fontFamily: "'Playfair Display', serif", 
+          fontSize: "24px", 
+          color: "#FFFFFF", 
+          fontWeight: 900, 
+          lineHeight: 1.2,
+          marginBottom: "12px",
+          textShadow: "2px 2px 4px rgba(0, 0, 0, 0.3)",
+          letterSpacing: "1px"
+        }}>
+          {isSignUp ? "Welcome to CA Arena" : "Welcome Back! Mr.CA"}
+        </div>
+        
+        {/* Subtitle */}
+        <div style={{
+          fontFamily: "'IBM Plex Sans', sans-serif", 
+          fontSize: "14px", 
+          color: "#FFFFFF", 
+          fontWeight: 400,
+          opacity: 0.9,
+          lineHeight: 1.4,
+          marginBottom: "16px",
+          textShadow: "1px 1px 2px rgba(0, 0, 0, 0.2)"
+        }}>
+          {isSignUp ? "You have been registered in CA Arena database" : "Business world awaits your insights"}
+        </div>
+        
+        {/* Vintage decorative separator */}
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          margin: "16px 0"
+        }}>
+          <div style={{
+            flex: 1,
+            height: "1px",
+            background: "rgba(255, 255, 255, 0.3)",
+            marginRight: "12px"
+          }} />
+          <div style={{
+            fontSize: "12px",
+            color: "#FFFFFF",
+            opacity: 0.7,
+            fontFamily: "'IBM Plex Mono', monospace"
+          }}>✦</div>
+          <div style={{
+            flex: 1,
+            height: "1px",
+            background: "rgba(255, 255, 255, 0.3)",
+            marginLeft: "12px"
+          }} />
+        </div>
+        
+        {/* User XP and Level Display */}
+        <div style={{
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: "12px", 
+          color: "#FFFFFF", 
+          opacity: 0.9,
+          letterSpacing: "1px",
+          textTransform: "uppercase",
+          marginBottom: "8px"
+        }}>
+          <div style={{ marginBottom: "4px" }}>
+            <span style={{ opacity: 0.7 }}>CURRENT XP:</span> {userXp.toLocaleString()}
+          </div>
+          <div>
+            <span style={{ opacity: 0.7 }}>LEVEL:</span> {userLevel} · <span style={{ color: DC[userRank] }}>{userRank}</span>
+          </div>
+        </div>
+        
+        {/* Dismiss hint */}
+        <div style={{
+          fontFamily: "'IBM Plex Mono', monospace",
+          fontSize: "9px", 
+          color: "#FFFFFF", 
+          opacity: 0.5,
+          letterSpacing: "1px",
+          textTransform: "uppercase"
+        }}>
+          Click outside to dismiss
+        </div>
       </div>
     </div>
   );
@@ -3934,6 +3939,9 @@ export default function App(){
 
   /* XP toast */
   const [xpToast,setXpToast] = useState(null); // {xp, rank, prevRank}
+  
+  /* Auth notification */
+  const [authNotification,setAuthNotification] = useState(null); // {type: "signup"|"signin"}
 
   /* ── Restore session on mount + fetch live data ── */
   useEffect(()=>{
@@ -3972,7 +3980,7 @@ export default function App(){
     try{
       if(!silent) setLeaderboardLoading(true);
       const data = await supabase.from("profiles",{
-        select:"id,username,xp,rank,cases_completed,xp_gained_today",
+        select:"id,username,xp,rank,cases_completed,xp_gained_today,commission",
         order:"xp.desc",
         limit:10,
       }, token||undefined);
@@ -4022,12 +4030,17 @@ export default function App(){
   }
 
   /* ── Auth handlers ── */
-  function handleAuth({token:t, user:u}){
+  function handleAuth({token:t, user:u, authType}){
     setToken(t); setUser(u);
     localStorage.setItem("ca_token", t);
     localStorage.setItem("ca_user", JSON.stringify(u));
     setShowAuth(false);
     fetchLeaderboard();
+    
+    // Show auth notification
+    if (authType) {
+      setAuthNotification({ type: authType });
+    }
   }
 
   useEffect(()=>{
@@ -4061,10 +4074,42 @@ export default function App(){
     return { score, maxScore };
   }
 
+  /* ── XP award for decisions ── */
+  async function awardDecisionXP(baseXp, month){
+    if(!user||!token) return;
+    
+    // Month multiplier: earlier decisions matter more
+    const monthMultiplier = month <= 2 ? 1.3 : month <= 4 ? 1.0 : 0.8;
+    const gained = Math.round(baseXp * monthMultiplier);
+    const newXp = (user.xp||0) + gained;
+    const prevRank = xpToRank(user.xp||0);
+    const newRank = xpToRank(newXp);
+    
+    const updated = {
+      ...user,
+      xp:newXp,
+      rank:newRank,
+      xp_gained_today:(user.xp_gained_today||0)+gained
+    };
+
+    // Optimistic update
+    setUser(updated);
+    localStorage.setItem("ca_user", JSON.stringify(updated));
+
+    // Update Supabase
+    await supabase.patch("profiles",
+      { xp:newXp, rank:newRank, xp_gained_today:updated.xp_gained_today },
+      { id:user.id }, token
+    );
+
+    // Show small toast for decision XP
+    setXpToast({ xp:gained, rank:newRank, prevRank, isRepeat:false, improvement:0 });
+  }
+
   /* ── XP award — called after any case completion ── */
   async function awardXP(diff, caseId, scoreData){
     if(!user||!token) return;
-    const fullReward = XP_REWARD[diff]||80;
+    const fullReward = XP_REWARD[diff]||50;
     const attempt = normalizeAttemptScore(scoreData);
     const currentPct = (attempt.score/attempt.maxScore)*100;
 
@@ -4114,7 +4159,6 @@ export default function App(){
 
       // Always award XP (minimum 10 XP even for 0% scores)
       gained = Math.max(10, gained);
-
       const newXp  = (user.xp||0) + gained;
       const prevRank = xpToRank(user.xp||0);
       const newRank  = xpToRank(newXp);
@@ -4125,21 +4169,22 @@ export default function App(){
         cases_completed:completedCount,
         xp_gained_today:(user.xp_gained_today||0)+gained
       };
-
       // Optimistic update
       setUser(updated);
       localStorage.setItem("ca_user", JSON.stringify(updated));
       setXpToast({ xp:gained, rank:newRank, prevRank, isRepeat, improvement: isRepeat ? Math.max(0, currentPct - bestPrevScore) : 0 });
-
       await supabase.patch("profiles",
         { xp:newXp, rank:newRank, cases_completed:updated.cases_completed, xp_gained_today:updated.xp_gained_today },
         { id:user.id }, token
       );
-
+      
+      // Add concepts to Grimoire from case completion
+      const concepts = CASE_CONCEPTS[caseId] || [];
+      await upsertGrimoireFromCase(supabase, user.id, caseId, caseNameById(caseId), concepts, newXp, token);
+      
       const actionText = isRepeat
         ? `repeated ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}${Math.max(0, currentPct - bestPrevScore)>0 ? ' · ↑'+Math.round(Math.max(0, currentPct - bestPrevScore))+'%' : ''}`
         : `completed ${caseId} (${Math.round(currentPct)}%) — +${gained} XP · ${newRank}`;
-
       await supabase.insert("activity_feed",{
         username: user.username,
         action_text: actionText,
@@ -4147,7 +4192,6 @@ export default function App(){
         created_at: new Date().toISOString(),
         time_ago: "just now",
       }, token).catch(()=>{});
-
       fetchLeaderboard();
     }catch(e){ console.warn("XP save failed:", e.message); }
   }
@@ -4169,7 +4213,6 @@ export default function App(){
 
   function handleSimComplete(result){
     setSimResult(result);
-    awardXP(result.caseDiff||"SEED","GRC-SEED-01",{ endingType:result.endingType });
     setScreen("sim-results");
   }
 
@@ -4298,7 +4341,7 @@ export default function App(){
           <CaseBrowser onNav={nav} onBack={()=>setScreen("lobby")} caseList={caseList} {...sidebarProps}/>
         )}
         {screen==="freshmart-sim"&&(
-          <FreshMartSim onBack={()=>setScreen("cases")} onComplete={handleSimComplete}/>
+          <FreshMartSim onBack={()=>setScreen("cases")} onComplete={handleSimComplete} onDecisionXP={awardXP} user={user}/>
         )}
         {screen==="sim"&&activeCaseId&&ALL_CASES[activeCaseId]&&(
           <SimRoom
@@ -4325,11 +4368,12 @@ export default function App(){
               {user&&(
                 <>
                   <div style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginBottom:10}}>XP STATS WINDOW</div>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:10,marginBottom:16}}>
-                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>USER</div><div style={{fontFamily:T.serif,fontSize:20,color:T.gold,fontWeight:800}}>{user.username}</div></div>
-                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>RANK</div><div style={{fontFamily:T.serif,fontSize:20,color:DC[xpToRank(user.xp)]||T.gold,fontWeight:800}}>{xpToRank(user.xp)} · Lv {xpToLevel(user.xp)}</div></div>
-                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>TOTAL XP</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{(user.xp||0).toLocaleString()}</div></div>
-                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>CASES COVERED</div><div style={{fontFamily:T.serif,fontSize:20,color:T.txt,fontWeight:800}}>{bestByCase.length}</div></div>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10,marginBottom:16}}>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>USER</div><div style={{fontFamily:T.serif,fontSize:18,color:T.gold,fontWeight:800}}>{user.username}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>RANK</div><div style={{fontFamily:T.serif,fontSize:18,color:DC[xpToRank(user.xp)]||T.gold,fontWeight:800}}>{xpToRank(user.xp)}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>TOTAL XP</div><div style={{fontFamily:T.serif,fontSize:18,color:T.txt,fontWeight:800}}>{(user.xp||0).toLocaleString()}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>COMMISSION</div><div style={{fontFamily:T.serif,fontSize:18,color:T.green,fontWeight:800}}>{(user.commission||0).toLocaleString()}</div></div>
+                    <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}><div style={{fontFamily:T.mono,fontSize:8,color:T.dim}}>CASES</div><div style={{fontFamily:T.serif,fontSize:18,color:T.txt,fontWeight:800}}>{bestByCase.length}</div></div>
                   </div>
                   <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(240px,1fr))",gap:10,marginBottom:16}}>
                     <div style={{background:T.surf,border:`1px solid ${T.border}`,padding:"12px 14px"}}>
@@ -4384,18 +4428,25 @@ export default function App(){
                       </div>
                     ))}
                   </div>
+                   <Grimoire userId={user.id} token={token} supabase={supabase} />           
                 </>
               )}
             </div>
           </div>
-        )}
+        )}{/* ── Grimoire lives inside progress, already rendered at line 4634 ── */}
 
-        {/* Auth modal */}
-        {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={handleAuth}/>}
+      </div>{/* closes root <div style={{fontFamily...}}> line 4533 */}
 
-        {/* XP toast */}
-        {xpToast&&<XPToast {...xpToast} onDone={()=>setXpToast(null)}/>}
-      </div>
+      {/* Auth modal */}
+      {showAuth&&<AuthModal onClose={()=>setShowAuth(false)} onAuth={handleAuth}/>}
+
+      {/* XP toast */}
+      {xpToast&&<XPToast {...xpToast} onDone={()=>setXpToast(null)}/>}
+
+      {/* Auth notification */}
+      {authNotification&&<AuthNotification type={authNotification.type} onDone={()=>setAuthNotification(null)} user={user}/>}
+
     </UserCtx.Provider>
   );
 }
+      
