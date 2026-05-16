@@ -10,7 +10,7 @@ import Grimoire, { upsertGrimoireFromCase } from './components/Grimoire';
 
 /* Inline Supabase REST client (no npm needed in this environment) */
 /* ─── User Context (flows through entire app) ─────────────────── */
-const UserCtx = createContext(null);
+export const UserCtx = createContext(null);
 function useUser(){ return useContext(UserCtx); }
 
 const XP_REWARD = { SEED:50, GROWTH:100, APEX:200, DECISION:10 };
@@ -145,6 +145,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "layoff_employees",
         label: "Layoff Employees - Reduce variable costs immediately",
+        xp: 15,
         effect: {
           salary_expense: "-200000",
           employee_morale: "-0.3",
@@ -155,6 +156,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "take_loan",
         label: "Take Business Loan - Inject cash for operations",
+        xp: 20,
         effect: {
           cash_on_hand: "+1000000",
           debt_stress: "+0.3"
@@ -164,6 +166,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "increase_prices",
         label: "Increase Prices - Improve margins immediately",
+        xp: 25,
+        percentageInput: { type: "price_increase", label: "Price Increase %", min: 1, max: 50, default: 15 },
         effect: {
           profit_margin: "+0.15",
           customer_footfall: "-20",
@@ -174,6 +178,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "supplier_credit",
         label: "Negotiate Supplier Credit - Reduce cash pressure",
+        xp: 35,
         effect: {
           cash_on_hand: "+300000",
           supplier_relations: "-0.1"
@@ -191,6 +196,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "aggressive_layoff",
         label: "Aggressive Layoff (40-50% of staff) - Maximum cost reduction",
+        xp: 10,
         effect: {
           salary_expense: "-250000",
           employee_morale: "-0.4",
@@ -202,6 +208,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "smart_layoff",
         label: "Smart Layoff (20% + role redesign) - Balanced approach",
+        xp: 30,
         effect: {
           salary_expense: "-150000",
           employee_morale: "-0.2",
@@ -220,6 +227,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "loan_inventory_clearance",
         label: "Use for Inventory Clearance - Deep discount sale to free cash",
+        xp: 35,
+        percentageInput: { type: "discount", label: "Discount %", min: 5, max: 70, default: 30 },
         effect: {
           dead_stock_units: "-200",
           cash_on_hand: "+400000",
@@ -230,6 +239,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "loan_expansion",
         label: "Use for Expansion - Marketing and store layout improvements",
+        xp: 20,
         effect: {
           customer_footfall: "+30",
           cash_on_hand: "-200000",
@@ -240,6 +250,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "loan_poor_allocation",
         label: "Poor Allocation - Spread too thin across initiatives",
+        xp: 10,
         effect: {
           cash_on_hand: "-100000",
           debt_stress: "+0.2"
@@ -257,6 +268,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "blind_increase",
         label: "Blind Price Increase - Apply across all products",
+        xp: 10,
+        percentageInput: { type: "price_increase", label: "Price Increase %", min: 5, max: 50, default: 20 },
         effect: {
           profit_margin: "+0.2",
           customer_footfall: "-40",
@@ -267,6 +280,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "selective_increase",
         label: "Selective Increase - Only on essential items",
+        xp: 30,
+        percentageInput: { type: "price_increase", label: "Price Increase %", min: 1, max: 30, default: 10 },
         effect: {
           profit_margin: "+0.1",
           customer_footfall: "-10",
@@ -277,6 +292,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "bundle_strategy",
         label: "Bundle Strategy - Package slow items with popular ones",
+        xp: 35,
+        percentageInput: { type: "discount", label: "Bundle Discount %", min: 5, max: 40, default: 15 },
         effect: {
           dead_stock_units: "-100",
           profit_margin: "+0.08",
@@ -295,6 +312,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "successful_negotiation",
         label: "Successful Negotiation - Secured favorable credit terms",
+        xp: 35,
         effect: {
           cash_on_hand: "+500000",
           supplier_relations: "+0.2",
@@ -305,6 +323,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "rejected_credit",
         label: "Credit Rejected - Suppliers unwilling to extend terms",
+        xp: 15,
         effect: {
           supplier_relations: "-0.2",
           debt_stress: "+0.1"
@@ -314,6 +333,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "overuse_credit",
         label: "Overuse Credit - Took maximum available, creating dependency",
+        xp: 20,
         effect: {
           cash_on_hand: "+800000",
           supplier_relations: "-0.3",
@@ -332,6 +352,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "service_recovery",
         label: "Service Recovery - Retrain remaining staff, improve processes",
+        xp: 30,
         effect: {
           employee_morale: "+0.2",
           customer_satisfaction: "+0.3",
@@ -342,6 +363,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "automation",
         label: "Invest in Automation - Self-checkout, inventory systems",
+        xp: 25,
         effect: {
           inventory_turnover: "+0.3",
           cash_on_hand: "-200000",
@@ -359,6 +381,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "customer_experience",
         label: "Enhance Customer Experience - Loyalty program, better service",
+        xp: 35,
         effect: {
           customer_satisfaction: "+0.3",
           customer_footfall: "+15",
@@ -369,6 +392,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "inventory_optimization",
         label: "Advanced Inventory Management - JIT ordering, demand forecasting",
+        xp: 30,
         effect: {
           dead_stock_units: "-150",
           inventory_turnover: "+0.4",
@@ -387,6 +411,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "margin_recovery",
         label: "Margin Recovery - Strategic price increases on key items",
+        xp: 30,
+        percentageInput: { type: "price_increase", label: "Price Increase %", min: 2, max: 25, default: 12 },
         effect: {
           profit_margin: "+0.12",
           customer_footfall: "-10",
@@ -397,6 +423,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "volume_focus",
         label: "Volume Focus - Push for higher sales volume at current margins",
+        xp: 25,
         effect: {
           monthly_sales: "+300000",
           cash_on_hand: "-150000",
@@ -414,6 +441,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "conversion_optimization",
         label: "Conversion Optimization - Better merchandising and upselling",
+        xp: 35,
         effect: {
           monthly_sales: "+400000",
           profit_margin: "+0.05",
@@ -424,6 +452,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "marketing_scale",
         label: "Scale Marketing - Double down on successful campaigns",
+        xp: 25,
         effect: {
           customer_footfall: "+25",
           cash_on_hand: "-300000",
@@ -441,6 +470,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "emergency_cost_cut",
         label: "Emergency Cost Cutting - Reduce expenses immediately",
+        xp: 15,
         effect: {
           monthly_expenses: "-150000",
           employee_morale: "-0.3",
@@ -451,6 +481,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "debt_restructuring",
         label: "Debt Restructuring - Negotiate better loan terms",
+        xp: 30,
         effect: {
           debt_stress: "-0.2",
           supplier_relations: "-0.1",
@@ -469,6 +500,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "price_correction",
         label: "Price Correction - Roll back some increases to recover traffic",
+        xp: 30,
+        percentageInput: { type: "discount", label: "Price Reduction %", min: 2, max: 30, default: 8 },
         effect: {
           customer_footfall: "+25",
           profit_margin: "-0.08",
@@ -479,6 +512,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "value_addition",
         label: "Value Addition - Add services to justify higher prices",
+        xp: 25,
         effect: {
           customer_satisfaction: "+0.2",
           monthly_expenses: "+100000",
@@ -496,6 +530,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "strategic_expansion",
         label: "Strategic Expansion - Add high-margin product lines",
+        xp: 30,
         effect: {
           profit_margin: "+0.08",
           monthly_sales: "+200000",
@@ -506,10 +541,11 @@ const FRESHMART_SCENARIOS = {
       {
         id: "customer_retention",
         label: "Customer Retention - Loyalty programs to increase repeat business",
+        xp: 35,
         effect: {
-          customer_satisfaction: "+0.3",
-          monthly_sales: "+250000",
-          cash_on_hand: "-100000"
+          customer_satisfaction: "+0.25",
+          monthly_sales: "+150000",
+          cash_on_hand: "-80000"
         },
         next: "month3_decisions"
       }
@@ -523,6 +559,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "bundle_scaling",
         label: "Scale Bundling - Expand successful bundle strategies",
+        xp: 30,
         effect: {
           dead_stock_units: "-100",
           monthly_sales: "+200000",
@@ -533,6 +570,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "inventory_system",
         label: "Inventory System - Invest in better inventory management",
+        xp: 25,
         effect: {
           inventory_turnover: "+0.3",
           cash_on_hand: "-200000",
@@ -551,6 +589,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "inventory_expansion",
         label: "Inventory Expansion - Use credit to add popular products",
+        xp: 35,
         effect: {
           monthly_sales: "+300000",
           supplier_relations: "+0.1",
@@ -561,6 +600,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "cash_reserve",
         label: "Build Cash Reserve - Hold credit as emergency buffer",
+        xp: 30,
         effect: {
           cash_on_hand: "+200000",
           debt_stress: "-0.1",
@@ -578,6 +618,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "cost_optimization",
         label: "Cost Optimization - Find efficiency gains without supplier help",
+        xp: 25,
         effect: {
           monthly_expenses: "-100000",
           employee_morale: "-0.1",
@@ -588,6 +629,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "alternative_funding",
         label: "Alternative Funding - Explore other financing options",
+        xp: 20,
         effect: {
           cash_on_hand: "+300000",
           debt_stress: "+0.15",
@@ -605,6 +647,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "relationship_repair",
         label: "Repair Supplier Relationships - Make partial payments to build trust",
+        xp: 30,
         effect: {
           supplier_relations: "+0.3",
           cash_on_hand: "-400000",
@@ -615,10 +658,11 @@ const FRESHMART_SCENARIOS = {
       {
         id: "diversification",
         label: "Supplier Diversification - Find alternative suppliers to reduce dependency",
+        xp: 35,
         effect: {
-          supplier_relations: "-0.2",
-          inventory_turnover: "+0.1",
-          monthly_expenses: "-50000"
+          supplier_relations: "+0.2",
+          inventory_turnover: "+0.15",
+          cash_on_hand: "-150000"
         },
         next: "month3_decisions"
       }
@@ -633,6 +677,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "aggressive_expansion",
         label: "Aggressive Expansion - Open new sections, add product lines",
+        xp: 25,
         effect: {
           monthly_sales: "+400000",
           cash_on_hand: "-600000",
@@ -644,6 +689,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "operational_optimization",
         label: "Operational Optimization - Streamline processes, reduce waste",
+        xp: 35,
         effect: {
           monthly_sales: "+200000",
           monthly_expenses: "-150000",
@@ -655,6 +701,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "customer_focus",
         label: "Customer Retention Focus - Loyalty programs, service improvements",
+        xp: 30,
         effect: {
           monthly_sales: "+250000",
           customer_satisfaction: "+0.3",
@@ -666,6 +713,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "conservative_approach",
         label: "Conservative Stabilization - Focus on current operations, minimize risk",
+        xp: 20,
         effect: {
           monthly_sales: "+100000",
           cash_on_hand: "+100000",
@@ -705,6 +753,7 @@ const FRESHMART_SCENARIOS = {
         id: "private_label",
         label: "Develop Private Label Products - Higher margins, brand control",
         xp: 50,
+        percentageInput: { type: "price_increase", label: "Private Label Margin Uplift %", min: 5, max: 40, default: 15 },
         effect: {
           profit_margin: "+0.15",
           monthly_sales: "+300000",
@@ -745,6 +794,8 @@ const FRESHMART_SCENARIOS = {
       {
         id: "heavy_discount",
         label: "Heavy Discount Clearance - Liquidate everything to generate cash",
+        xp: 20,
+        percentageInput: { type: "discount", label: "Clearance Discount %", min: 20, max: 80, default: 40 },
         effect: {
           dead_stock_units: "-300",
           cash_on_hand: "+200000",
@@ -755,6 +806,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "desperate_renegotiation",
         label: "Desperate Supplier Renegotiation - Emergency terms to stay afloat",
+        xp: 15,
         effect: {
           supplier_relations: "-0.4",
           cash_on_hand: "+150000",
@@ -765,6 +817,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "shutdown_decision",
         label: "Consider Shutdown - Acknowledge failure and exit",
+        xp: 5,
         effect: {},
         next: "ending_failure"
       }
@@ -779,6 +832,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "emergency_funding",
         label: "Emergency Funding - Seek last-resort financing at high cost",
+        xp: 15,
         effect: {
           cash_on_hand: "+1000000",
           debt_stress: "+0.3",
@@ -789,6 +843,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "radical_downsize",
         label: "Radical Downsize - Cut to essentials, focus on core products only",
+        xp: 20,
         effect: {
           monthly_expenses: "-300000",
           dead_stock_units: "-200",
@@ -800,6 +855,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "last_ditch_marketing",
         label: "Last-Ditch Marketing - Desperate promotion to boost sales quickly",
+        xp: 25,
         effect: {
           monthly_sales: "+500000",
           cash_on_hand: "-300000",
@@ -810,6 +866,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "accept_failure",
         label: "Accept Failure - Prepare for orderly shutdown",
+        xp: 5,
         effect: {},
         next: "ending_failure"
       }
@@ -824,6 +881,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "aggressive_marketing",
         label: "Aggressive Marketing Campaign - Digital ads, local promotions",
+        xp: 35,
         effect: {
           customer_footfall: "+80",
           monthly_sales: "+800000",
@@ -835,6 +893,7 @@ const FRESHMART_SCENARIOS = {
       {
         id: "product_expansion",
         label: "Premium Product Expansion - High-margin specialty items",
+        xp: 40,
         effect: {
           profit_margin: "+0.2",
           monthly_sales: "+600000",
@@ -1447,24 +1506,96 @@ const FM_BACKGROUNDS = {
   back_office: "/freshmart/back_office.jpg",
 };
 
-// ─── Dialogue scripts per scenario ────────────────────────────────
-const FM_DIALOGUE = {
-  start: [
-    { speaker:"narrator", bg:"store",
-      text:"Lahore, 9 AM. You step into Imran's General Store for your first day as a CA intern. The fluorescent light flickers. Something is wrong." },
-    { speaker:"owner", expression:"desperate", bg:"store",
-      text:"Acha hua aa gaye. I've been here since Fajr. Sit down — you need to see these numbers." },
-    { speaker:"owner", expression:"thinking",
-      text:"Rafiq — my head cashier, eight years with me — he's gone. And PKR 3.2 million went with him." },
-    { speaker:"owner", expression:"concerned",
-      text:"I have 400 SKUs sitting on shelves that haven't moved in three months. Dead stock. Cash locked, going nowhere." },
-    { speaker:"owner", expression:"desperate",
-      text:"Rent is PKR 400,000. Salaries PKR 450,000. Electricity PKR 50,000. Every month — whether we sell or not." },
-    { speaker:"narrator",
-      text:"Monthly sales: PKR 1M. Monthly burn: PKR 900K. Margin: 10%. The math barely works — and that was before the theft." },
-    { speaker:"owner", expression:"concerned",
-      text:"I invested PKR 30 million. My retirement. My children's future. I need PKR 2M by Month 3 and PKR 4M by Month 6. Tell me — what do we do first?" },
-  ],
+// ─── Dynamic dialogue generation ────────────────────────────────────────
+function generateDynamicDialogue(scenarioId, session, state) {
+  const fmt = (n) => {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(0)}K`;
+    return String(Math.round(n));
+  };
+  const pct = (n) => `${Math.round(n * 100)}%`;
+
+  if (scenarioId === "start") {
+    return [
+      { speaker:"narrator", bg:"store",
+        text:"Lahore, 9 AM. You step into the store for your first day as a CA intern. The fluorescent light flickers. Something is wrong." },
+      { speaker:"owner", expression:"desperate", bg:"store",
+        text:"Acha hua aa gaye. I've been here since Fajr. Sit down — you need to see these numbers." },
+      { speaker:"owner", expression:"thinking",
+        text:`My head cashier — eight years with me — he's gone. And PKR ${fmt(state.cash_embezzled)} went with him.` },
+      { speaker:"owner", expression:"concerned",
+        text:`I have ${state.dead_stock_units} SKUs sitting on shelves that haven't moved in three months. Dead stock. Cash locked, going nowhere.` },
+      { speaker:"owner", expression:"desperate",
+        text:`Rent is PKR ${fmt(state.rent_expense)}. Salaries PKR ${fmt(state.salary_expense)}. Electricity PKR ${fmt(state.electricity_expense)}. Every month — whether we sell or not.` },
+      { speaker:"narrator",
+        text:`Monthly sales: PKR ${fmt(state.monthly_sales)}. Monthly burn: PKR ${fmt(state.monthly_burn)}. Margin: ${pct(state.profit_margin)}. The math barely works — and that was before the crisis.` },
+      { speaker:"owner", expression:"concerned",
+        text:`I invested PKR ${fmt(state.capital_invested)}. My retirement. My children's future. I need PKR ${fmt(state.month_target_3)} by Month 3 and PKR ${fmt(state.month_target_6)} by Month 6. Tell me — what do we do first?` },
+    ];
+  }
+
+  if (scenarioId === "month2_optimized_ops") {
+    return [
+      { speaker:"narrator", text:"Month 2. The early decisions are showing results. The numbers are moving in the right direction." },
+      { speaker:"owner", expression:"neutral",
+        text:"I've been watching daily. We're not there yet — but it feels different. More organised." },
+      { speaker:"owner", expression:"thinking",
+        text:`We need to accelerate. Month 3 target is PKR ${fmt(state.month_target_3)}. One month to close the gap.` },
+    ];
+  }
+
+  if (scenarioId === "scaling_phase") {
+    return [
+      { speaker:"owner", expression:"confident",
+        text:`We hit it. PKR ${fmt(state.month_target_3)}. I honestly wasn't sure we would.` },
+      { speaker:"owner", expression:"neutral",
+        text:"The business is viable. Now — how do we grow it? Month 6 target is PKR ${fmt(state.month_target_6)}. We're halfway." },
+      { speaker:"narrator", text:"Month 4. The business has stabilised. The strategic phase begins." },
+    ];
+  }
+
+  if (scenarioId === "ending_success") {
+    return [
+      { speaker:"narrator", bg:"store", text:"Month 6. The final count is in." },
+      { speaker:"owner", expression:"confident", bg:"store",
+        text:`We did it. PKR ${fmt(state.month_target_6)}. My accountant confirmed this morning. The investment is recoverable.` },
+      { speaker:"owner", expression:"neutral", bg:"store",
+        text:"You taught me to read my own business. I was running on instinct for years. You brought the numbers into it." },
+      { speaker:"narrator", bg:"store",
+        text:`Final sales: PKR ${fmt(state.monthly_sales)}. Recovery score: ${Math.round(state.monthly_sales / state.month_target_6 * 100)}%. The business is saved.` },
+    ];
+  }
+
+  if (scenarioId === "loan_decision") {
+    const loanAmount = 1_000_000; // Default loan amount, could be made dynamic from session
+    return [
+      { speaker:"narrator", bg:"back_office", text:"You call the bank. The relationship manager arrives within the hour." },
+      { speaker:"owner", expression:"thinking", bg:"back_office",
+        text:`PKR ${fmt(loanAmount)} injected. Breathing room. But now we owe the bank on top of everything else.` },
+      { speaker:"owner", expression:"concerned", bg:"back_office",
+        text:"Interest starts immediately. We need to deploy this carefully — where does it go?" },
+    ];
+  }
+
+  if (scenarioId === "credit_decision") {
+    const creditAmount = 300_000; // Default credit amount, could be made dynamic from session
+    return [
+      { speaker:"narrator", bg:"back_office", text:"You arrange a meeting with the main supplier. Chai is poured. The negotiation begins." },
+      { speaker:"owner", expression:"neutral", bg:"back_office",
+        text:"We've been loyal customers for eleven years. I'm asking for 60 days. Just 60 days to stabilise." },
+      { speaker:"narrator", bg:"back_office",
+        text:`The supplier agrees — reluctantly. PKR ${fmt(creditAmount)} in cash pressure relieved.` },
+      { speaker:"owner", expression:"confident",
+        text:"Good. Now let's use this window properly. What's the next move?" },
+    ];
+  }
+
+  // Default fallback for other scenarios (keep existing hardcoded for now)
+  return FM_DIALOGUE_STATIC[scenarioId] || [];
+}
+
+// Static dialogue for non-start scenarios (can be made dynamic later)
+const FM_DIALOGUE_STATIC = {
   layoff_decision: [
     { speaker:"narrator", text:"You recommend cutting the salary bill. The owner stares at the staff roster." },
     { speaker:"owner", expression:"thinking",
@@ -1634,8 +1765,28 @@ function calcRecovery(state) {
   return Math.min(100, Math.round(((state.monthly_sales||0)/(state.month_target_6||4_000_000))*100));
 }
 
-function applyFMEffects(base, effects) {
+function applyFMEffects(base, effects, userPct) {
   const s = { ...base };
+  // If this option has a percentageInput type, override relevant effects dynamically
+  if (userPct && userPct.type && userPct.value != null) {
+    const pct = Number(userPct.value) || 0;
+    if (userPct.type === "discount") {
+      // Discount: boosts sales volume, hurts margin
+      effects = {
+        ...effects,
+        monthly_sales: `+${Math.round(base.monthly_sales * pct * 0.01 * 0.8)}`,
+        profit_margin: `-${(pct * 0.01).toFixed(3)}`
+      };
+    } else if (userPct.type === "price_increase") {
+      // Price increase: boosts margin, reduces footfall proportionally
+      effects = {
+        ...effects,
+        profit_margin: `+${(pct * 0.01).toFixed(3)}`,
+        customer_footfall: `-${Math.round(pct * 2)}`,
+        customer_satisfaction: `-${(pct * 0.008).toFixed(3)}`
+      };
+    }
+  }
   Object.entries(effects||{}).forEach(([k,v]) => {
     if (typeof v==="string" && v.startsWith("+")) s[k]=Math.max(0,(s[k]||0)+parseFloat(v));
     else if (typeof v==="string" && v.startsWith("-")) s[k]=Math.max(0,(s[k]||0)+parseFloat(v));
@@ -1699,8 +1850,8 @@ function fmResolveNext(nextId, state, month) {
 }
 
 // ─── DialoguePlayer ────────────────────────────────────────────────
-function FMDialoguePlayer({ scenarioId, ownerName, onComplete }) {
-  const lines = FM_DIALOGUE[scenarioId]||[];
+function FMDialoguePlayer({ scenarioId, ownerName, onComplete, session, state }) {
+  const lines = generateDynamicDialogue(scenarioId, session, state);
   const [idx,setIdx]         = useState(0);
   const [visible,setVisible] = useState(true);
 
@@ -1823,19 +1974,138 @@ function FMXpPopup({ xp, visible }) {
   );
 }
 
+// ─── PercentageInputPanel ──────────────────────────────────────────
+function PercentageInputPanel({ config, value, onChange, baseState }) {
+  const pct = Number(value) || config.default;
+  const type = config.type;
+
+  // Compute live impact preview
+  const preview = (() => {
+    if (type === "discount") {
+      const salesBoost = Math.round((baseState.monthly_sales||1_000_000) * pct * 0.01 * 0.8);
+      const marginDrop = (pct * 0.01 * 100).toFixed(1);
+      return [
+        { label: "Monthly Sales ↑", value: `+PKR ${salesBoost>=1e6?(salesBoost/1e6).toFixed(1)+"M":(salesBoost/1e3).toFixed(0)+"K"}`, color: T.green },
+        { label: "Profit Margin ↓", value: `-${marginDrop}pp`, color: T.red },
+        { label: "Dead Stock Cleared", value: "Partial", color: T.gold },
+      ];
+    } else {
+      const footfallDrop = Math.round(pct * 2);
+      const margGain = (pct * 0.01 * 100).toFixed(1);
+      const csatDrop = (pct * 0.8).toFixed(1);
+      return [
+        { label: "Profit Margin ↑", value: `+${margGain}pp`, color: T.green },
+        { label: "Daily Footfall ↓", value: `-${footfallDrop} customers`, color: T.red },
+        { label: "Customer Satisfaction ↓", value: `-${csatDrop}%`, color: T.red },
+      ];
+    }
+  })();
+
+  const trackPct = Math.round(((pct - config.min) / (config.max - config.min)) * 100);
+
+  return (
+    <div style={{
+      marginTop: 12, padding: "14px 16px",
+      background: "#0a0f1a",
+      border: `1px solid ${T.gold}44`,
+      borderLeft: `3px solid ${T.gold}`,
+      animation: "fadeIn .2s both"
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <span style={{ fontFamily: T.mono, fontSize: 8, color: T.gold, letterSpacing: 2 }}>
+          {config.label.toUpperCase()}
+        </span>
+        <div style={{
+          fontFamily: T.mono, fontSize: 16, fontWeight: 700,
+          color: T.gold, minWidth: 46, textAlign: "right"
+        }}>
+          {pct}%
+        </div>
+      </div>
+
+      {/* Slider */}
+      <div style={{ position: "relative", marginBottom: 10 }}>
+        <div style={{
+          height: 4, background: T.muted, borderRadius: 2, position: "relative", overflow: "hidden"
+        }}>
+          <div style={{
+            position: "absolute", left: 0, top: 0, height: "100%",
+            width: `${trackPct}%`, background: T.gold, transition: "width .1s"
+          }}/>
+        </div>
+        <input
+          type="range"
+          min={config.min} max={config.max} value={pct} step={1}
+          onChange={e => onChange(Number(e.target.value))}
+          style={{
+            position: "absolute", inset: 0, width: "100%", height: "100%",
+            opacity: 0, cursor: "pointer", margin: 0
+          }}
+        />
+      </div>
+
+      {/* Min/Max labels */}
+      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+        <span style={{ fontFamily: T.mono, fontSize: 7, color: T.dim }}>{config.min}%</span>
+        <span style={{ fontFamily: T.mono, fontSize: 7, color: T.dim }}>{config.max}%</span>
+      </div>
+
+      {/* Impact preview */}
+      <div style={{
+        padding: "8px 10px", background: T.surf,
+        border: `1px solid ${T.border}`, borderTop: `1px solid ${T.goldM}`
+      }}>
+        <div style={{ fontFamily: T.mono, fontSize: 7, color: T.muted, letterSpacing: 2, marginBottom: 6 }}>
+          PROJECTED IMPACT
+        </div>
+        {preview.map((row, i) => (
+          <div key={i} style={{
+            display: "flex", justifyContent: "space-between", gap: 8,
+            paddingBottom: i < preview.length - 1 ? 4 : 0
+          }}>
+            <span style={{ fontFamily: T.mono, fontSize: 8, color: T.dim }}>{row.label}</span>
+            <span style={{ fontFamily: T.mono, fontSize: 8, color: row.color, fontWeight: 700 }}>{row.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Intensity warning */}
+      {type === "discount" && pct >= 50 && (
+        <div style={{ marginTop: 6, fontFamily: T.mono, fontSize: 7, color: T.red, letterSpacing: 1 }}>
+          ⚠ Heavy discount — margin damage may be irreversible
+        </div>
+      )}
+      {type === "price_increase" && pct >= 30 && (
+        <div style={{ marginTop: 6, fontFamily: T.mono, fontSize: 7, color: "#F97316", letterSpacing: 1 }}>
+          ⚡ Aggressive increase — high footfall loss risk
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── OptionCard ────────────────────────────────────────────────────
-function FMOptionCard({ option, index, onSelect }) {
+function FMOptionCard({ option, index, onSelect, userPercentages, onPercentageChange, baseState }) {
   const [hov,setHov]=useState(false);
   const xpVal   = option.xp||10;
   const quality = xpVal>=30?"OPTIMAL":xpVal>=20?"MODERATE":"RISKY";
   const qColor  = xpVal>=30?T.green:xpVal>=20?T.gold:T.red;
+  const hasPctInput = !!option.percentageInput;
+  const pctKey  = option.id;
+  const currentPct = userPercentages?.[pctKey] ?? option.percentageInput?.default ?? 15;
+
+  function handleSelect() {
+    const pctData = hasPctInput ? { type: option.percentageInput.type, value: currentPct } : null;
+    onSelect(option, pctData);
+  }
+
   return (
-    <div onClick={()=>onSelect(option)}
+    <div
       onMouseEnter={()=>setHov(true)} onMouseLeave={()=>setHov(false)}
       style={{background:hov?T.surf2:T.surf,
         border:`1px solid ${hov?qColor+"66":T.border}`,
         borderLeft:`3px solid ${qColor}`,
-        padding:"15px 18px",cursor:"pointer",
+        padding:"15px 18px",
         transition:"all .18s",position:"relative"}}>
       <div style={{position:"absolute",top:10,right:12,
         fontFamily:T.mono,fontSize:7,color:T.gold,
@@ -1848,7 +2118,19 @@ function FMOptionCard({ option, index, onSelect }) {
       <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,lineHeight:1.5,fontWeight:600,paddingRight:64}}>
         {option.label}
       </div>
-      {hov&&option.effect&&(
+
+      {/* Percentage input panel (always visible when option has pctInput) */}
+      {hasPctInput && (
+        <PercentageInputPanel
+          config={option.percentageInput}
+          value={currentPct}
+          onChange={val => onPercentageChange(pctKey, val)}
+          baseState={baseState}
+        />
+      )}
+
+      {/* Static effect preview for non-percentage options */}
+      {!hasPctInput && hov && option.effect && (
         <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`,
           display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,animation:"fadeIn .15s both"}}>
           {Object.entries(option.effect).map(([k,v])=>{
@@ -1864,6 +2146,23 @@ function FMOptionCard({ option, index, onSelect }) {
           })}
         </div>
       )}
+
+      {/* Confirm button */}
+      <button
+        onClick={handleSelect}
+        style={{
+          marginTop: 12, width: "100%",
+          background: hov ? qColor+"22" : "transparent",
+          border: `1px solid ${qColor}66`,
+          color: qColor, fontFamily: T.mono, fontSize: 9,
+          padding: "7px 0", cursor: "pointer", letterSpacing: 2,
+          transition: "all .15s"
+        }}
+        onMouseEnter={e=>{e.currentTarget.style.background=qColor+"33";}}
+        onMouseLeave={e=>{e.currentTarget.style.background=hov?qColor+"22":"transparent";}}
+      >
+        {hasPctInput ? `CONFIRM AT ${currentPct}% →` : "SELECT →"}
+      </button>
     </div>
   );
 }
@@ -1884,6 +2183,7 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
   const [decisionHistory,setDecisionHistory] = useState([]);
   const [currentScenario,setCurrentScenario] = useState(FRESHMART_SCENARIOS.start);
   const [permanentConsequences,setPermanentConsequences] = useState({});
+  const [userPercentages,setUserPercentages]             = useState({});
   const [isMobile,setIsMobile]               = useState(false);
   const [timeRemaining,setTimeRemaining]     = useState(120);
   const [timerActive,setTimerActive]         = useState(false);
@@ -1930,12 +2230,13 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
     if (opts.length) handleOptionSelect(opts[Math.floor(Math.random()*opts.length)]);
   }
 
-  function handleOptionSelect(option){
+  function handleOptionSelect(option, pctData){
     setTimerActive(false);
     setSelectedOption(option);
-    const newState=applyFMEffects(state,option.effect||{});
+    const newState=applyFMEffects(state,option.effect||{},pctData);
     const decision={month:currentMonth,scenarioId:currentScenario.id,
-      optionId:option.id,optionLabel:option.label,xpEarned:option.xp||10};
+      optionId:option.id,optionLabel:option.label,xpEarned:option.xp||10,
+      percentageUsed:pctData||null};
     const newHistory=[...decisionHistory,decision];
     setDecisionHistory(newHistory);
     setState(newState);
@@ -1998,6 +2299,7 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
     setSelectedOption(null);
     setDecisionHistory([]);
     setPermanentConsequences({});
+    setUserPercentages({});
   }
 
   function formatTime(s){ return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`; }
@@ -2083,7 +2385,7 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
         <div style={{flex:1,minWidth:0}}>
 
           {phase==="dialogue"&&(
-            <FMDialoguePlayer scenarioId={currentScenario.id} ownerName={ownerName} onComplete={handleDialogueComplete}/>
+            <FMDialoguePlayer scenarioId={currentScenario.id} ownerName={ownerName} onComplete={handleDialogueComplete} session={session} state={state}/>
           )}
 
           {phase==="decision"&&!isEnding&&(
@@ -2118,11 +2420,19 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
               ):(
                 <>
                   <div style={{fontFamily:T.mono,fontSize:7,color:T.muted,letterSpacing:2,marginBottom:12}}>
-                    {(currentScenario.options||[]).length} OPTIONS — HOVER TO PREVIEW
+                    {(currentScenario.options||[]).length} OPTIONS — SET PARAMETERS & CONFIRM
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:10}}>
                     {(currentScenario.options||[]).map((opt,i)=>(
-                      <FMOptionCard key={opt.id} option={opt} index={i} onSelect={handleOptionSelect}/>
+                      <FMOptionCard
+                        key={opt.id}
+                        option={opt}
+                        index={i}
+                        onSelect={handleOptionSelect}
+                        userPercentages={userPercentages}
+                        onPercentageChange={(key, val) => setUserPercentages(prev => ({...prev, [key]: val}))}
+                        baseState={state}
+                      />
                     ))}
                   </div>
                 </>
@@ -2136,6 +2446,11 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
               <FMReactionBox optionId={selectedOption.id} ownerName={ownerName}/>
               <div style={{background:T.surf,border:`1px solid ${T.gold}44`,padding:"15px 18px",marginBottom:16}}>
                 <div style={{fontFamily:T.sans,fontSize:13,color:T.txt,fontWeight:600,marginBottom:8}}>{selectedOption.label}</div>
+                {decisionHistory[decisionHistory.length-1]?.percentageUsed && (
+                  <div style={{fontFamily:T.mono,fontSize:8,color:T.gold,marginBottom:6,letterSpacing:1}}>
+                    {decisionHistory[decisionHistory.length-1].percentageUsed.type === "discount" ? "DISCOUNT" : "PRICE INCREASE"}: {decisionHistory[decisionHistory.length-1].percentageUsed.value}% APPLIED
+                  </div>
+                )}
                 <div style={{fontFamily:T.mono,fontSize:9,color:T.gold}}>+{selectedOption.xp||10} XP earned</div>
                 {(state.monthly_expense_deduction||0)>0&&(
                   <div style={{marginTop:10,paddingTop:10,borderTop:`1px solid ${T.border}`}}>
@@ -4341,7 +4656,7 @@ export default function App(){
           <CaseBrowser onNav={nav} onBack={()=>setScreen("lobby")} caseList={caseList} {...sidebarProps}/>
         )}
         {screen==="freshmart-sim"&&(
-          <FreshMartSim onBack={()=>setScreen("cases")} onComplete={handleSimComplete} onDecisionXP={awardXP} user={user}/>
+          <FreshMartSim onBack={()=>setScreen("cases")} onComplete={handleSimComplete} onDecisionXP={awardDecisionXP} user={user}/>
         )}
         {screen==="sim"&&activeCaseId&&ALL_CASES[activeCaseId]&&(
           <SimRoom
@@ -4449,4 +4764,3 @@ export default function App(){
     </UserCtx.Provider>
   );
 }
-      
