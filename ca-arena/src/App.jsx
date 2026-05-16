@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, createContext, useContext } from "react";
+import { useState, useEffect, useRef, useCallback, createContext, useContext } from "react";
 import { supabase } from "./lib/supabase";
 import html2canvas from 'html2canvas';
 import { generateFreshMartSession, startSession, loadSession, saveDecision, completeSession } from './lib/generateFreshMartSession';
@@ -2203,16 +2203,72 @@ function FreshMartSim({ onBack, onComplete, onDecisionXP, user }) {
     return ()=>window.removeEventListener("resize",fn);
   },[]);
 
+  // Timer sound helpers
+  const audioContextRef = useRef(null);
+  const playTickSound = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 800;
+    osc.type = 'sine';
+    gain.gain.setValueAtTime(0.05, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.1);
+  }, []);
+
+  const playWarningSound = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 600;
+    osc.type = 'square';
+    gain.gain.setValueAtTime(0.1, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.3);
+  }, []);
+
+  const playAlarmSound = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    const ctx = audioContextRef.current;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 400;
+    osc.type = 'sawtooth';
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+  }, []);
+
   useEffect(()=>{
     if (!timerActive||timeRemaining<=0) return;
     const id=setInterval(()=>{
       setTimeRemaining(t=>{
-        if (t<=1){ setTimerActive(false); handleTimeExpired(); return 120; }
-        return t-1;
+        const newTime = t-1;
+        if (newTime<=0){ setTimerActive(false); handleTimeExpired(); playAlarmSound(); return 120; }
+        if (newTime<=30 && newTime>0 && (newTime===30 || newTime===15 || newTime===10 || newTime<=5)) playWarningSound();
+        else playTickSound();
+        return newTime;
       });
     },1000);
     return ()=>clearInterval(id);
-  },[timerActive,timeRemaining]);
+  },[timerActive,timeRemaining,playTickSound,playWarningSound,playAlarmSound]);
 
   useEffect(()=>{
     if (phase==="decision"&&!isEnding&&!isCheckpoint){ setTimeRemaining(120); setTimerActive(true); }
