@@ -3,6 +3,8 @@ import { supabase } from "./lib/supabase";
 import html2canvas from 'html2canvas';
 import { generateFreshMartSession, startSession, loadSession, saveDecision, completeSession } from './lib/generateFreshMartSession';
 import Grimoire, { upsertGrimoireFromCase } from './components/Grimoire';
+import Boardroomv from './boardroomv.jsx';
+import StoryMode from './storymode.jsx';
 /* ═══════════════════════════════════════════════════════════════════
    SUPABASE CONFIG  ← paste your real values here
    Supabase Dashboard → Settings → API
@@ -3142,10 +3144,31 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
   const totalQ = topAnswers.length;
   const perfPct = totalQ>0 ? Math.round((optimalCount/totalQ)*100) : null;
 
-  /* per-question rows — already computed and passed in as topAnswers */
-
   /* sim path nodes */
   const simPath = isSimResult&&simResult?.log ? simResult.log : [];
+
+  /* Build sim story purely from simResult prop — no external scope references */
+  const simState   = simResult?.state || {};
+  const simScore   = simResult?.keyInsights?.[0]?.score ?? 0;
+  const simEnding  = simResult?.keyInsights?.[0]?.ending ?? displayGrade;
+  const finalSales = simState.monthly_sales || simResult?.keyInsights?.[0]?.finalSales || 0;
+  const initMargin = 10; // FreshMart starts at 10% margin
+  const finalMarginPct = Math.round((simState.profit_margin||0.1)*100);
+  const monthsPlayed = simResult?.log?.length
+    ? (simResult.log[simResult.log.length-1]?.month || simResult.month || 6)
+    : (simResult?.month || 6);
+  const decisionsCount = simResult?.log?.length || 0;
+  const pathSummary = simResult?.keyInsights?.[0]?.pathText || simPath.slice(0,3).map(e=>e.action||e.label||"").join(" → ");
+
+  function fmtSales(n){ return n>=1e6?`PKR ${(n/1e6).toFixed(1)}M`:n>=1e3?`PKR ${(n/1e3).toFixed(0)}K`:`PKR ${Math.round(n)}`; }
+
+  const storyHeadline = isSimResult
+    ? (simEnding==="Business Saved"||simEnding==="OPTIMAL"
+        ? `Turned a cash-burning grocery store into a ${fmtSales(finalSales)}/month business in ${monthsPlayed} months.`
+        : simEnding==="Business Survived"||simEnding==="RECOVERED"
+        ? `Stabilised FreshMart from near-collapse to ${fmtSales(finalSales)}/month sales over ${monthsPlayed} months.`
+        : `Navigated FreshMart's liquidity crisis across ${monthsPlayed} months — ${decisionsCount} decisions, hard lessons learned.`)
+    : null;
 
   return(
     <div style={{background:"#fff",borderRadius:10,overflow:"hidden",boxShadow:"0 12px 60px #00000055",fontFamily:"'IBM Plex Sans',sans-serif"}}>
@@ -3175,12 +3198,9 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
             </>}
             {isSimResult&&(
               <>
-                <div style={{fontFamily:"'Playfair Display',serif",fontSize:18,color:displayGC,fontWeight:900,lineHeight:1.4,marginBottom:8}}>
-                  {generateStorytellingContent(state, decisionHistory).crisisHook}
-                  {generateStorytellingContent(state, decisionHistory).pathText}
-                  {generateStorytellingContent(state, decisionHistory).marginChange > 0 ? `and turned ${Math.round(generateStorytellingContent(state, decisionHistory).marginChange)}% margin into ${Math.round(generateStorytellingContent(state, decisionHistory).score)}% in ${generateStorytellingContent(state, decisionHistory).months} months.` : `and ${generateStorytellingContent(state, decisionHistory).ending.toLowerCase()}.`}
-                </div>
-                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#aaa",letterSpacing:2}}>OUTCOME</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:28,color:displayGC,fontWeight:900,lineHeight:1,marginBottom:6}}>{simScore}%</div>
+                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#aaa",letterSpacing:2,marginBottom:4}}>RECOVERY</div>
+                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:displayGC,fontWeight:800,letterSpacing:1}}>{simEnding}</div>
               </>
             )}
           </div>
@@ -3188,6 +3208,9 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
           <div style={{flex:1}}>
             <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#bbb",letterSpacing:2,marginBottom:4}}>{isSimResult?"BRANCHING SIMULATION":"CASE STUDY"}</div>
             <div style={{fontFamily:"'Playfair Display',serif",fontSize:19,color:"#111",fontWeight:700,lineHeight:1.2,marginBottom:8}}>{company}</div>
+            {isSimResult && storyHeadline && (
+              <p style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:12,color:"#333",lineHeight:1.65,margin:"0 0 10px",fontStyle:"italic"}}>{storyHeadline}</p>
+            )}
             <p style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11,color:"#666",lineHeight:1.65,margin:"0 0 12px"}}>{synopsis}</p>
             {/* Stats row */}
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -3203,12 +3226,14 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
                 </div>
               ))}
               {isSimResult&&[
-                {l:"Score",v:`${Math.round(generateStorytellingContent(state, decisionHistory).score)}%`},
-                {l:"Rank",v:generateStorytellingContent(state, decisionHistory).rank},
+                {l:"Recovery Score",v:`${simScore}%`},
+                {l:"Decisions",v:decisionsCount},
+                {l:"Final Sales",v:fmtSales(finalSales)},
+                {l:"Margin",v:`${finalMarginPct}%`},
               ].map(({l,v})=>(
                 <div key={l} style={{background:"#eeede8",padding:"4px 10px",borderRadius:2}}>
                   <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#aaa",letterSpacing:1}}>{l.toUpperCase()}</div>
-                  <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:12,color:"#222",fontWeight:700}}>{v}</div>
+                  <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:11,color:"#222",fontWeight:700}}>{v}</div>
                 </div>
               ))}
             </div>
@@ -3292,11 +3317,37 @@ function LinkedInCardPreview({company,diff,ctype,displayPct,displayGrade,display
                 </div>
                 <div style={{paddingLeft:10,paddingBottom:i<simPath.length-1?10:0,flex:1}}>
                   <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:8,color:"#bbb",letterSpacing:1,marginBottom:1}}>Month {e.month}</div>
-                  <div style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11.5,color:"#333",lineHeight:1.5}}>{e.label}</div>
+                  <div style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11.5,color:"#333",lineHeight:1.5}}>{e.action||e.label}</div>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* ── TRANSFORMATION STORY (Sim only) ── */}
+      {isSimResult&&(
+        <div style={{padding:"16px 24px",background:"#fff",borderBottom:"1px solid #eeeee8"}}>
+          <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#bbb",letterSpacing:2,marginBottom:12}}>THE TRANSFORMATION</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:10,marginBottom:14}}>
+            {[
+              { label:"Starting Margin", value:`${initMargin}%`, sub:"PKR 1M sales", color:"#dc2626" },
+              { label:"Final Sales", value:fmtSales(finalSales), sub:`${finalMarginPct}% margin`, color:displayGC },
+              { label:"Decisions Made", value:decisionsCount, sub:`over ${monthsPlayed} months`, color:"#2563eb" },
+            ].map(({label,value,sub,color})=>(
+              <div key={label} style={{background:"#f9f8f5",padding:"10px 12px",borderRadius:3,borderLeft:`3px solid ${color}`}}>
+                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#aaa",letterSpacing:1,marginBottom:3}}>{label.toUpperCase()}</div>
+                <div style={{fontFamily:"'Playfair Display',serif",fontSize:15,color:"#111",fontWeight:700}}>{value}</div>
+                <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#999"}}>{sub}</div>
+              </div>
+            ))}
+          </div>
+          {pathSummary&&(
+            <div style={{background:"#f4f3ee",padding:"10px 14px",borderRadius:3,borderLeft:"3px solid #d4af37"}}>
+              <div style={{fontFamily:"'IBM Plex Mono',monospace",fontSize:7,color:"#bbb",letterSpacing:1,marginBottom:4}}>STRATEGIC PATH</div>
+              <div style={{fontFamily:"'IBM Plex Sans',sans-serif",fontSize:11,color:"#444",lineHeight:1.6}}>{pathSummary}</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -3563,33 +3614,51 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
 
   /* ── LinkedIn caption (rich, structured) ── */
   const optimalCount = topAnswers.filter(a=>a.pts===100).length;
-  const captionParts = [
+
+  // Build sim-specific story caption
+  const simCaptionLines = isSimResult ? [
+    `🏪 I just completed the FreshMart Business Turnaround Simulation on CA Arena.`,
+    ``,
+    `The scenario: A general store burning PKR 900K/month with only 10% margin, 400+ dead stock SKUs, and a 30M investment at risk.`,
+    ``,
+    `My outcome: ${simEnding} — ${fmtSales(finalSales)}/month in final sales after ${monthsPlayed} months.`,
+    ``,
+    `Key decisions I made:`,
+    ...(simPath.slice(0,5).map((e,i)=>`   ${i+1}. [Month ${e.month}] ${e.action||e.label||""}`)),
+    ``,
+    `What I learned:`,
+    ...(simResult?.keyInsights?.[0] ? [
+      `   • Recovery Score: ${simScore}%`,
+      `   • Final Profit Margin: ${finalMarginPct}%`,
+      pathSummary ? `   • Strategic path: ${pathSummary}` : null,
+    ].filter(Boolean) : []),
+    ``,
+    `This is the kind of business judgment that textbooks don't teach — and CA Arena makes you practice it under pressure.`,
+    ``,
+    `#CharteredAccountancy #CAArenaPK #BusinessTurnaround #FinancialAnalysis #CAStudents #ICAP #ManagementAccounting`,
+  ].filter(x=>x!==null).join("\n") : null;
+
+  const captionParts = isSimResult ? simCaptionLines : [
     `📋 CA Arena — Case Study Report`,
     ``,
     `Company: ${company}`,
-    `Format: ${ctype==="financial"?"Financial Statement Analysis":"Business Scenario"}${isSimResult?" (Branching Simulation)":""}`,
+    `Format: ${ctype==="financial"?"Financial Statement Analysis":"Business Scenario"}`,
     `Difficulty: ${diff}`,
     ``,
     `📌 What this case covered:`,
     synopsis,
     ``,
-    isSimResult
-      ? `🔀 Simulation outcome: ${displayGrade} — ${simResult.log?.length||0} decisions across ${simResult.log?.[simResult.log.length-1]?.month||"?"} months`
-      : `📊 Result: ${displayPct}% · ${displayGrade} · ${optimalCount}/${topAnswers.length} optimal decisions`,
+    `📊 Result: ${displayPct}% · ${displayGrade} · ${optimalCount}/${topAnswers.length} optimal decisions`,
     ``,
     `🧠 CA concepts examined:`,
     concepts.slice(0,5).map((c,i)=>`   ${i+1}. ${c}`).join("\n"),
     ``,
     `💡 Key analytical takeaways:`,
-    keyInsightLines.slice(0,isSimResult?4:3).map((ins,i)=>`   ${i+1}. ${String(ins).replace(/…$/,"")}`).join("\n"),
+    keyInsightLines.slice(0,3).map((ins,i)=>`   ${i+1}. ${String(ins).replace(/…$/,"")}`).join("\n"),
     ``,
-    !isSimResult&&topAnswers.length>0
+    topAnswers.length>0
       ? [`📝 Decision breakdown:`,
          ...topAnswers.map((a,i)=>`   Q${i+1}: ${a.verdict} (${a.pts}/100)`),
-        ].join("\n")
-      : isSimResult&&simResult?.log
-      ? [`🔀 Path taken:`,
-         ...(simResult.log.slice(0,5).map((e,i)=>`   ${i+1}. [M${e.month||e.week}] ${e.action}`)),
         ].join("\n")
       : "",
     ``,
@@ -3870,94 +3939,6 @@ function ResultsCard({caseData,score,maxScore,answers,onBack,simResult}){
           </div>
         )}
 
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════════════════════════════
-   BOARDROOM
-═══════════════════════════════════════════════════════════════════ */
-const SLIDES=[
-  {title:"Lucky Cement Ltd. — Capex Decision FY2025",sub:"Board Presentation · Strategic Finance",type:"cover"},
-  {title:"Financial Position",sub:"FY2024 vs FY2023",type:"bullets",points:["Revenue: PKR 92B (+8.2% YoY)","EBITDA Margin: 31.4% (▼2.1pp)","Net Debt: PKR 28B (ND/EBITDA: 0.9x)","Proposed Capex: PKR 18B — new production kiln"]},
-  {title:"Strategic Rationale",sub:"Why expand now?",type:"bullets",points:["Cement demand CAGR +6% through FY2028 (PSDP-driven)","Current utilisation: 94% — at capacity ceiling","New kiln adds 1.8M tons/year","Payback period: 6–7 years at current prices"]},
-  {title:"Risk Matrix",sub:"Key concerns",type:"bullets",points:["Post-capex ND/EBITDA rises to 2.1x","Coal price volatility: energy = 38% of COGS","PKRUSD depreciation on imported equipment","Demand concentration: 3 projects = 40% of revenue"]},
-  {title:"Recommendation",sub:"Capital allocation decision",type:"rec",text:"Proceed with PKR 18B kiln capex, funded 60/40 debt/internal cash. Defer dividend increase 24 months. Hedge USD exposure on equipment import via forward contracts. Re-evaluate in Q2 FY2026 against utilisation data."},
-];
-function Boardroom({onBack}){
-  const [msgs,setMsgs]=useState([
-    {id:1,user:"Z.Khan",role:"AUDIENCE",text:"The capex justification is weak — no IRR or NPV disclosed. How does the presenter respond to that gap?",time:"1m",vote:14,type:"challenge"},
-    {id:2,user:"H.Raza",role:"AUDIENCE",text:"KIBOR hedging wasn't addressed. At 22% KIBOR, the debt service cost on PKR 10.8B borrowed should be quantified explicitly.",time:"2m",vote:9,type:"challenge"},
-    {id:3,user:"S.Mirza",role:"AUDIENCE",text:"The demand CAGR analysis was solid — properly cited PSDP infrastructure data. NIM slide was strong.",time:"3m",vote:17,type:"praise"},
-  ]);
-  const [newMsg,setNewMsg]=useState("");
-  const [msgType,setMsgType]=useState("comment");
-  const [votes,setVotes]=useState({clarity:72,depth:58,defence:44});
-  const [slideIdx,setSlideIdx]=useState(0);
-  const [presMode,setPresMode]=useState(false);
-  const feedRef=useRef(null);
-  function sendMsg(){if(!newMsg.trim())return;setMsgs(p=>[...p,{id:Date.now(),user:"You",role:"AUDIENCE",text:newMsg,time:"now",vote:0,type:msgType}]);setNewMsg("");setTimeout(()=>feedRef.current?.scrollTo({top:99999,behavior:"smooth"}),60);}
-  const vc=v=>v>=70?T.green:v>=50?T.gold:T.red;
-  return(
-    <div style={{height:"100vh",background:T.bg,display:"flex",flexDirection:"column",overflow:"hidden"}}>
-      <TopBar label="THE BOARDROOM" sub="LIVE" onBack={onBack} right={
-        <div style={{display:"flex",gap:10,alignItems:"center"}}>
-          <div style={{display:"flex",alignItems:"center",gap:6}}><div style={{width:7,height:7,borderRadius:"50%",background:T.blue,animation:"pulse 1.2s infinite"}}/><span style={{fontFamily:T.mono,fontSize:9,color:T.blue,letterSpacing:2}}>LIVE</span></div>
-          <span style={{fontFamily:T.mono,fontSize:9,color:T.dim}}>218 watching</span>
-          <button onClick={()=>setPresMode(v=>!v)} style={{background:presMode?T.blue:"transparent",border:`1px solid ${T.blue}`,color:presMode?"#000":T.blue,fontFamily:T.mono,fontSize:9,padding:"4px 12px",cursor:"pointer",letterSpacing:2}}>{presMode?"AUDIENCE":"PRESENTER"}</button>
-        </div>
-      }/>
-      <div style={{background:T.surf2,borderBottom:`1px solid ${T.border}`,padding:"5px 28px",fontFamily:T.mono,fontSize:9,color:T.dim,letterSpacing:1,flexShrink:0}}>Lucky Cement Ltd. — Capex Decision FY2025 · Presenter: A.Farooq</div>
-      <div style={{flex:1,display:"flex",overflow:"hidden",minHeight:0}}>
-        <div style={{flex:1,display:"flex",flexDirection:"column",borderRight:`2px solid ${T.border}`,overflow:"hidden"}}>
-          <div style={{flex:1,display:"flex",flexDirection:"column",justifyContent:"center",padding:"44px 50px",position:"relative",overflow:"hidden"}}>
-            <svg style={{position:"absolute",inset:0,opacity:.04,pointerEvents:"none",width:"100%",height:"100%"}}><defs><pattern id="dots" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse"><circle cx="12" cy="12" r="1.2" fill={T.blue}/></pattern></defs><rect width="100%" height="100%" fill="url(#dots)"/></svg>
-            <div style={{position:"relative",animation:"fadeIn .3s both"}}>
-              {SLIDES[slideIdx].type==="cover"&&<><Tag color={T.blue} small>{`SLIDE ${slideIdx+1} / ${SLIDES.length}`}</Tag><div style={{height:24}}/><h1 style={{fontFamily:T.serif,fontSize:"clamp(20px,3vw,36px)",color:T.txt,marginBottom:10,fontWeight:900,lineHeight:1.05}}>{SLIDES[slideIdx].title}</h1><p style={{fontFamily:T.mono,fontSize:11,color:T.blue,letterSpacing:2}}>{SLIDES[slideIdx].sub}</p></>}
-              {SLIDES[slideIdx].type==="bullets"&&<><Tag color={T.blue} small>{`SLIDE ${slideIdx+1} / ${SLIDES.length}`}</Tag><div style={{height:16}}/><h2 style={{fontFamily:T.serif,fontSize:26,color:T.txt,marginBottom:4,fontWeight:700}}>{SLIDES[slideIdx].title}</h2><p style={{fontFamily:T.mono,fontSize:9,color:T.blue,letterSpacing:2,marginBottom:22}}>{SLIDES[slideIdx].sub}</p><div style={{display:"flex",flexDirection:"column",gap:10}}>{SLIDES[slideIdx].points.map((p,i)=><div key={i} style={{display:"flex",alignItems:"flex-start",gap:10}}><div style={{width:5,height:5,background:T.gold,flexShrink:0,marginTop:7}}/><span style={{fontFamily:T.sans,fontSize:14.5,color:"#ccc",lineHeight:1.6}}>{p}</span></div>)}</div></>}
-              {SLIDES[slideIdx].type==="rec"&&<><Tag color={T.gold} small>{`SLIDE ${slideIdx+1} / ${SLIDES.length}`}</Tag><div style={{height:16}}/><h2 style={{fontFamily:T.serif,fontSize:26,color:T.txt,marginBottom:4,fontWeight:700}}>{SLIDES[slideIdx].title}</h2><p style={{fontFamily:T.mono,fontSize:9,color:T.gold,letterSpacing:2,marginBottom:18}}>{SLIDES[slideIdx].sub}</p><div style={{background:T.goldD,border:`1px solid ${T.goldM}`,padding:"18px 20px"}}><p style={{fontFamily:T.sans,fontSize:14.5,color:T.txt,lineHeight:1.8}}>{SLIDES[slideIdx].text}</p></div></>}
-            </div>
-          </div>
-          <div style={{borderTop:`2px solid ${T.border}`,padding:"12px 22px",display:"flex",justifyContent:"space-between",alignItems:"center",flexShrink:0}}>
-            <button disabled={slideIdx===0} onClick={()=>setSlideIdx(v=>v-1)} style={{background:"none",border:`1px solid ${slideIdx===0?T.muted:T.dim}`,color:slideIdx===0?T.muted:T.dim,fontFamily:T.mono,fontSize:9,padding:"5px 14px",cursor:slideIdx===0?"not-allowed":"pointer",letterSpacing:2}}>← PREV</button>
-            <div style={{display:"flex",gap:5}}>{SLIDES.map((_,i)=><div key={i} onClick={()=>setSlideIdx(i)} style={{width:i===slideIdx?16:5,height:5,background:i===slideIdx?T.blue:T.mid,transition:"width .2s",cursor:"pointer"}}/>)}</div>
-            <button disabled={slideIdx===SLIDES.length-1} onClick={()=>setSlideIdx(v=>v+1)} style={{background:"none",border:`1px solid ${slideIdx===SLIDES.length-1?T.muted:T.blue}`,color:slideIdx===SLIDES.length-1?T.muted:T.blue,fontFamily:T.mono,fontSize:9,padding:"5px 14px",cursor:slideIdx===SLIDES.length-1?"not-allowed":"pointer",letterSpacing:2}}>NEXT →</button>
-          </div>
-          <div style={{borderTop:`2px solid ${T.border}`,padding:"12px 22px",display:"flex",gap:22,alignItems:"center",flexShrink:0}}>
-            {[["Clarity","clarity"],["Depth","depth"],["Defence","defence"]].map(([l,k])=>(
-              <div key={k} style={{flex:1}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}><span style={{fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:1.5}}>{l.toUpperCase()}</span><span style={{fontFamily:T.mono,fontSize:9,color:vc(votes[k]),fontWeight:700}}>{votes[k]}%</span></div>
-                <div style={{height:4,background:T.muted}}><div style={{height:"100%",width:`${votes[k]}%`,background:vc(votes[k]),transition:"width .5s"}}/></div>
-              </div>
-            ))}
-            {presMode&&<div style={{display:"flex",gap:5,flexShrink:0}}>{[["C","clarity",8],["D","depth",8],["X","defence",-10]].map(([l,k,d])=><button key={k} onClick={()=>setVotes(v=>({...v,[k]:Math.min(100,Math.max(0,v[k]+d))}))} style={{background:T.goldD,border:`1px solid ${T.goldM}`,color:T.gold,fontFamily:T.mono,fontSize:8,padding:"3px 7px",cursor:"pointer"}}>{l}{d>0?"+":""}{d}</button>)}</div>}
-          </div>
-        </div>
-        <div style={{width:310,display:"flex",flexDirection:"column",overflow:"hidden",flexShrink:0}}>
-          <div style={{padding:"11px 16px",borderBottom:`1px solid ${T.border}`,fontFamily:T.mono,fontSize:8,color:T.dim,letterSpacing:2,flexShrink:0}}>AUDIENCE FEED · {msgs.length}</div>
-          <div ref={feedRef} style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:9}}>
-            {msgs.map((m,i)=>(
-              <div key={m.id} style={{borderLeft:`3px solid ${m.type==="challenge"?T.red:m.type==="praise"?T.green:T.mid}`,paddingLeft:9,paddingBottom:10,borderBottom:i<msgs.length-1?`1px solid ${T.muted}`:"none"}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:3,gap:4,flexWrap:"wrap"}}>
-                  <span style={{fontFamily:T.mono,fontSize:10,color:m.user==="You"?T.gold:"#ccc",fontWeight:700}}>{m.user}</span>
-                  <div style={{display:"flex",gap:5,alignItems:"center"}}><Tag color={m.type==="challenge"?T.red:m.type==="praise"?T.green:T.muted} small>{m.type.toUpperCase()}</Tag><span style={{fontFamily:T.mono,fontSize:7,color:T.muted}}>{m.time}</span></div>
-                </div>
-                <p style={{fontFamily:T.sans,fontSize:12,color:"#777",lineHeight:1.6,margin:0}}>{m.text}</p>
-                <button onClick={()=>setMsgs(p=>p.map(x=>x.id===m.id?{...x,vote:x.vote+1}:x))} style={{marginTop:5,background:"none",border:`1px solid ${T.border}`,color:T.dim,fontFamily:T.mono,fontSize:7,padding:"2px 7px",cursor:"pointer",letterSpacing:1}}>▲ {m.vote}</button>
-              </div>
-            ))}
-          </div>
-          <div style={{padding:"10px 14px",borderTop:`2px solid ${T.border}`,flexShrink:0}}>
-            <div style={{display:"flex",gap:3,marginBottom:7}}>
-              {["comment","challenge","praise"].map(t=><button key={t} onClick={()=>setMsgType(t)} style={{flex:1,background:msgType===t?(t==="challenge"?T.red:t==="praise"?T.green:T.gold):"transparent",border:`1px solid ${t==="challenge"?T.red:t==="praise"?T.green:T.gold}`,color:msgType===t?"#000":(t==="challenge"?T.red:t==="praise"?T.green:T.gold),fontFamily:T.mono,fontSize:7,padding:"4px 0",cursor:"pointer",letterSpacing:1}}>{t.toUpperCase()}</button>)}
-            </div>
-            <div style={{display:"flex",gap:7}}>
-              <input value={newMsg} onChange={e=>setNewMsg(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMsg()} placeholder="Add your comment..." style={{flex:1,background:T.surf,border:`1px solid ${T.border}`,color:T.txt,fontFamily:T.sans,fontSize:12,padding:"7px 10px"}}/>
-              <button onClick={sendMsg} style={{background:T.blue,border:"none",color:"#000",fontFamily:T.mono,fontSize:10,fontWeight:800,padding:"0 12px",cursor:"pointer"}}>→</button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -4415,7 +4396,7 @@ export default function App(){
   }
 
   useEffect(()=>{
-    if(screen==="progress") fetchUserAttempts();
+    if(user?.id && token) fetchUserAttempts();
   },[screen, user?.id, token]);
 
   async function handleSignOut(){
@@ -4577,6 +4558,8 @@ export default function App(){
       const id = s.replace("play-","").replace("case-","");
       setActiveCaseId(id);
       setScreen("sim");
+    } else if(s==="storymode"){
+      setScreen("storymode");
     } else {
       setScreen(s);
     }
@@ -4585,6 +4568,15 @@ export default function App(){
   function handleSimComplete(result){
     setSimResult(result);
     setScreen("sim-results");
+    // Award XP for simulation completion — was missing, breaking progress/Grimoire/XP
+    const endingType = result?.endingType || "failure";
+    const scoreMap = { success:90, perfect:100, good:75, survival:60, warn:60, bad:30, failure:20 };
+    const syntheticScore = scoreMap[endingType] ?? 30;
+    awardXP("SEED", result?.caseId || "freshmart-sim", {
+      score: syntheticScore,
+      maxScore: 100,
+      endingType,
+    }).then(()=>fetchUserAttempts()).catch(()=>{});
   }
 
   function handleMCQComplete(caseData, score, maxScore){
@@ -4601,7 +4593,7 @@ export default function App(){
           <span style={{fontFamily:T.mono,fontSize:8,color:T.muted,letterSpacing:2,marginLeft:4}}>BETA</span>
         </div>
         <div style={{display:"flex",gap:20,alignItems:"center"}}>
-          {["Rankings","Progress","Boardroom"].map(x=>(
+          {["Rankings","Progress","Story","Boardroom"].map(x=>(
             <span key={x} style={{fontFamily:T.mono,fontSize:10,color:T.dim,cursor:"pointer",letterSpacing:1.5,transition:"color .15s"}}
               onMouseEnter={e=>e.currentTarget.style.color=T.gold}
               onMouseLeave={e=>e.currentTarget.style.color=T.dim}
@@ -4609,6 +4601,7 @@ export default function App(){
                 if(x==="Boardroom") setScreen("boardroom");
                 if(x==="Progress") setScreen("progress");
                 if(x==="Rankings") setScreen("lobby");
+                if(x==="Story") setScreen("storymode");
               }}>
               {x.toUpperCase()}
             </span>
@@ -4724,7 +4717,8 @@ export default function App(){
         {screen==="sim-results"&&simResult&&(
           <ResultsCard simResult={simResult} onBack={()=>setScreen("lobby")}/>
         )}
-        {screen==="boardroom"&&<Boardroom onBack={()=>setScreen("lobby")}/>}
+        {screen==="boardroom"&&<Boardroomv onBack={()=>setScreen("lobby")}/>}
+        {screen==="storymode"&&<StoryMode onBack={()=>setScreen("lobby")}/>}
         {screen==="progress"&&(
           <div style={{minHeight:"100vh",background:T.bg,display:"flex",flexDirection:"column"}}>
             <NavBar/>
